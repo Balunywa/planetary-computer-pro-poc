@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "16077901749647107127"
+      "templateHash": "4561336809141477457"
     }
   },
   "parameters": {
@@ -80,7 +80,77 @@
       "type": "string",
       "defaultValue": "https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure",
       "metadata": {
-        "description": "Base URL (raw) that hosts setup.ps1 and ingest_sample.py. Point this at your fork if you change the scripts."
+        "description": "Base URL (raw) that hosts setup.ps1. Point this at your fork if you change the provisioning script."
+      }
+    },
+    "officialRepoUrl": {
+      "type": "string",
+      "defaultValue": "https://github.com/Azure/microsoft-planetary-computer-pro.git",
+      "metadata": {
+        "description": "Git repository the workstation clones — the official Microsoft Planetary Computer Pro samples/notebooks/apps/tools. Point this at a fork if desired."
+      }
+    },
+    "deployAiAgent": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy an Azure OpenAI (Microsoft Foundry) account + model deployment for agentic / reasoning GeoAI scenarios against the GeoCatalog."
+      }
+    },
+    "openAiDeploymentName": {
+      "type": "string",
+      "defaultValue": "gpt-5-mini",
+      "metadata": {
+        "description": "Name of the Azure OpenAI (Foundry) model deployment."
+      }
+    },
+    "openAiModelName": {
+      "type": "string",
+      "defaultValue": "gpt-5-mini",
+      "metadata": {
+        "description": "Azure OpenAI model name."
+      }
+    },
+    "openAiModelVersion": {
+      "type": "string",
+      "defaultValue": "2025-08-07",
+      "metadata": {
+        "description": "Azure OpenAI model version."
+      }
+    },
+    "openAiSkuName": {
+      "type": "string",
+      "defaultValue": "GlobalStandard",
+      "metadata": {
+        "description": "Azure OpenAI deployment SKU."
+      }
+    },
+    "openAiCapacity": {
+      "type": "int",
+      "defaultValue": 10,
+      "metadata": {
+        "description": "Azure OpenAI deployment capacity, in thousands of tokens per minute (TPM)."
+      }
+    },
+    "deployAuroraModel": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the Microsoft Aurora weather foundation model on a GPU-backed Foundry managed-compute endpoint. Requires GPU (A100) quota, an Azure Marketplace subscription, and acceptance of the model terms."
+      }
+    },
+    "auroraInstanceType": {
+      "type": "string",
+      "defaultValue": "Standard_NC24ads_A100_v4",
+      "metadata": {
+        "description": "GPU VM size for the Aurora managed-compute deployment. Aurora requires an A100-class SKU; you must have quota for it in the selected region."
+      }
+    },
+    "auroraModelAssetId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Registry model asset ID for the Aurora managed-compute deployment (for example azureml://registries/azureml/models/<Aurora-model>/versions/<n>). Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms)."
       }
     }
   },
@@ -97,7 +167,16 @@
     "ingestIdentityName": "[format('{0}-ingest-identity', variables('namePrefix'))]",
     "sampleContainerName": "sample-assets",
     "storageBlobDataReaderRoleId": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",
-    "networkNeeded": "[parameters('deployWorkstation')]"
+    "networkNeeded": "[parameters('deployWorkstation')]",
+    "openAiName": "[toLower(format('pcpro-oai-{0}', uniqueString(resourceGroup().id)))]",
+    "cognitiveServicesOpenAiUserRoleId": "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
+    "amlSuffix": "[take(uniqueString(resourceGroup().id), 8)]",
+    "amlWorkspaceName": "[format('pcpro-aml-{0}', variables('amlSuffix'))]",
+    "amlStorageName": "[toLower(format('pcproaml{0}', take(uniqueString(resourceGroup().id), 12)))]",
+    "amlKeyVaultName": "[format('pcpro-kv-{0}', variables('amlSuffix'))]",
+    "auroraEndpointName": "[format('aurora-{0}', variables('amlSuffix'))]",
+    "auroraDeploymentName": "aurora",
+    "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]"
   },
   "resources": [
     {
@@ -343,8 +422,12 @@
             "value": "[variables('effectiveGeoCatalogName')]"
           },
           {
-            "name": "ArtifactsBaseUrl",
-            "value": "[parameters('artifactsBaseUrl')]"
+            "name": "GeoCatalogRegion",
+            "value": "[parameters('location')]"
+          },
+          {
+            "name": "RepoUrl",
+            "value": "[parameters('officialRepoUrl')]"
           },
           {
             "name": "SampleContainerUrl",
@@ -353,14 +436,181 @@
           {
             "name": "IngestIdentityObjectId",
             "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, '')]"
+          },
+          {
+            "name": "FoundryEndpoint",
+            "value": "[if(parameters('deployAiAgent'), reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), '2024-10-01').endpoint, '')]"
+          },
+          {
+            "name": "FoundryDeployment",
+            "value": "[if(parameters('deployAiAgent'), parameters('openAiDeploymentName'), '')]"
+          },
+          {
+            "name": "AuroraEndpoint",
+            "value": "[if(parameters('deployAuroraModel'), reference(resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName')), '2023-10-01').scoringUri, '')]"
           }
         ],
-        "timeoutInSeconds": 1200
+        "timeoutInSeconds": 1800
       },
       "dependsOn": [
+        "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
         "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployAiAgent')]",
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2024-10-01",
+      "name": "[variables('openAiName')]",
+      "location": "[parameters('location')]",
+      "kind": "OpenAI",
+      "sku": {
+        "name": "S0"
+      },
+      "properties": {
+        "customSubDomainName": "[variables('openAiName')]",
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "condition": "[parameters('deployAiAgent')]",
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "apiVersion": "2024-10-01",
+      "name": "[format('{0}/{1}', variables('openAiName'), parameters('openAiDeploymentName'))]",
+      "sku": {
+        "name": "[parameters('openAiSkuName')]",
+        "capacity": "[parameters('openAiCapacity')]"
+      },
+      "properties": {
+        "model": {
+          "format": "OpenAI",
+          "name": "[parameters('openAiModelName')]",
+          "version": "[parameters('openAiModelVersion')]"
+        },
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('deployAiAgent'), parameters('deployWorkstation'))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), variables('workstationName'), variables('cognitiveServicesOpenAiUserRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesOpenAiUserRoleId'))]",
+        "principalId": "[if(parameters('deployWorkstation'), reference(resourceId('Microsoft.Compute/virtualMachines', variables('workstationName')), '2023-09-01', 'full').identity.principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployAiAgent')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), deployer().objectId, variables('cognitiveServicesOpenAiUserRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesOpenAiUserRoleId'))]",
+        "principalId": "[deployer().objectId]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployAuroraModel')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('amlStorageName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "allowBlobPublicAccess": false,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true
+      }
+    },
+    {
+      "condition": "[parameters('deployAuroraModel')]",
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('amlKeyVaultName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "tenantId": "[subscription().tenantId]",
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "enableRbacAuthorization": true,
+        "enableSoftDelete": true,
+        "accessPolicies": []
+      }
+    },
+    {
+      "condition": "[parameters('deployAuroraModel')]",
+      "type": "Microsoft.MachineLearningServices/workspaces",
+      "apiVersion": "2023-10-01",
+      "name": "[variables('amlWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "friendlyName": "[variables('amlWorkspaceName')]",
+        "storageAccount": "[resourceId('Microsoft.Storage/storageAccounts', variables('amlStorageName'))]",
+        "keyVault": "[resourceId('Microsoft.KeyVault/vaults', variables('amlKeyVaultName'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('amlKeyVaultName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('amlStorageName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployAuroraModel')]",
+      "type": "Microsoft.MachineLearningServices/workspaces/onlineEndpoints",
+      "apiVersion": "2023-10-01",
+      "name": "[format('{0}/{1}', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "authMode": "Key"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.MachineLearningServices/workspaces', variables('amlWorkspaceName'))]"
+      ]
+    },
+    {
+      "condition": "[variables('deployAuroraDeployment')]",
+      "type": "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments",
+      "apiVersion": "2023-10-01",
+      "name": "[format('{0}/{1}/{2}', variables('amlWorkspaceName'), variables('auroraEndpointName'), variables('auroraDeploymentName'))]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Default",
+        "capacity": 1
+      },
+      "properties": {
+        "endpointComputeType": "Managed",
+        "model": "[parameters('auroraModelAssetId')]",
+        "instanceType": "[parameters('auroraInstanceType')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]"
       ]
     }
   ],
@@ -399,6 +649,26 @@
     "sampleContainerUrl": {
       "type": "string",
       "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), 'not-deployed')]"
+    },
+    "aiAgentEndpoint": {
+      "type": "string",
+      "value": "[if(parameters('deployAiAgent'), reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), '2024-10-01').endpoint, 'not-deployed')]"
+    },
+    "aiAgentDeployment": {
+      "type": "string",
+      "value": "[if(parameters('deployAiAgent'), parameters('openAiDeploymentName'), 'not-deployed')]"
+    },
+    "auroraWorkspace": {
+      "type": "string",
+      "value": "[if(parameters('deployAuroraModel'), variables('amlWorkspaceName'), 'not-deployed')]"
+    },
+    "auroraEndpoint": {
+      "type": "string",
+      "value": "[if(parameters('deployAuroraModel'), variables('auroraEndpointName'), 'not-deployed')]"
+    },
+    "auroraModelDeployed": {
+      "type": "bool",
+      "value": "[variables('deployAuroraDeployment')]"
     },
     "ingestIdentityClientId": {
       "type": "string",

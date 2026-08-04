@@ -4,9 +4,9 @@
   "version": "0.1.2-preview",
   "parameters": {
     "config": {
-      "isWizard": true,
+      "isWizard": false,
       "basics": {
-        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus an optional analytics workstation and sample-data storage. Choose the full environment or only the components you need. The workstation is reached privately over Azure Bastion.",
+        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus optional components: an analytics workstation (VS Code + Python over Azure Bastion), sample-data storage, an Azure OpenAI (Microsoft Foundry) agent, and the Microsoft Aurora weather model on a GPU Foundry endpoint. The GeoCatalog is always deployed; choose the rest. [Learn more](https://github.com/Balunywa/planetary-computer-pro-poc).",
         "location": {
           "label": "Region",
           "toolTip": "GeoCatalog is available in these regions during Preview.",
@@ -43,27 +43,57 @@
         "label": "Components",
         "elements": [
           {
-            "name": "componentsInfo",
+            "name": "geoCatalogInfo",
             "type": "Microsoft.Common.InfoBox",
             "visible": true,
             "options": {
               "icon": "Info",
-              "text": "The GeoCatalog is always deployed. Add the workstation to run the automated sample ingestion, and sample storage for the bring-your-own-data ingestion path."
+              "text": "The GeoCatalog is always deployed. Select any additional components below, then configure them on the following tabs."
             }
           },
           {
-            "name": "deployWorkstation",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Deploy analytics workstation (VS Code + Python over Bastion)",
-            "defaultValue": true,
-            "toolTip": "A Windows VM, network-isolated, that runs the automated STAC ingest + visualization sample."
-          },
-          {
-            "name": "deploySampleStorage",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Deploy sample-data storage + ingestion managed identity",
-            "defaultValue": true,
-            "toolTip": "Storage account and user-assigned managed identity for the managed-identity ingestion path."
+            "name": "selected",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Optional components to deploy",
+            "toolTip": "Select one or more components. Use Select all for the complete environment.",
+            "multiselect": true,
+            "selectAll": true,
+            "defaultValue": [
+              {
+                "value": "workstation"
+              },
+              {
+                "value": "sampleStorage"
+              },
+              {
+                "value": "aiAgent"
+              }
+            ],
+            "constraints": {
+              "required": false,
+              "allowedValues": [
+                {
+                  "label": "Analytics workstation + Azure Bastion",
+                  "value": "workstation",
+                  "description": "Windows VM (VS Code + Python + Git) with private RDP over Azure Bastion; clones the official repo."
+                },
+                {
+                  "label": "Sample storage + ingestion identity",
+                  "value": "sampleStorage",
+                  "description": "Storage account and managed identity for the bring-your-own-data ingestion path."
+                },
+                {
+                  "label": "AI agent (Azure OpenAI / Foundry)",
+                  "value": "aiAgent",
+                  "description": "Azure OpenAI account + GPT deployment for agentic / reasoning GeoAI scenarios."
+                },
+                {
+                  "label": "Aurora weather model (GPU Foundry endpoint)",
+                  "value": "auroraModel",
+                  "description": "Foundry (Azure ML) workspace + GPU managed-compute endpoint for the Microsoft Aurora model. Requires A100 GPU quota + marketplace terms."
+                }
+              ]
+            }
           }
         ]
       },
@@ -74,7 +104,7 @@
           {
             "name": "workstationRequired",
             "type": "Microsoft.Common.InfoBox",
-            "visible": "[not(steps('components').deployWorkstation)]",
+            "visible": "[not(contains(steps('components').selected, 'workstation'))]",
             "options": {
               "icon": "Info",
               "text": "The workstation is not selected. These settings are ignored."
@@ -88,9 +118,9 @@
             "toolTip": "Administrator login for the workstation VM.",
             "osPlatform": "Windows",
             "constraints": {
-              "required": "[steps('components').deployWorkstation]"
+              "required": "[contains(steps('components').selected, 'workstation')]"
             },
-            "visible": "[steps('components').deployWorkstation]"
+            "visible": "[contains(steps('components').selected, 'workstation')]"
           },
           {
             "name": "adminPassword",
@@ -104,12 +134,12 @@
             },
             "osPlatform": "Windows",
             "constraints": {
-              "required": "[steps('components').deployWorkstation]"
+              "required": "[contains(steps('components').selected, 'workstation')]"
             },
             "options": {
               "hideConfirmation": false
             },
-            "visible": "[steps('components').deployWorkstation]"
+            "visible": "[contains(steps('components').selected, 'workstation')]"
           },
           {
             "name": "vmSize",
@@ -130,7 +160,81 @@
               "sku": "2022-datacenter-azure-edition"
             },
             "count": 1,
-            "visible": "[steps('components').deployWorkstation]"
+            "visible": "[contains(steps('components').selected, 'workstation')]"
+          }
+        ]
+      },
+      {
+        "name": "aiConfig",
+        "label": "AI",
+        "elements": [
+          {
+            "name": "aiRequired",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[and(not(contains(steps('components').selected, 'aiAgent')), not(contains(steps('components').selected, 'auroraModel')))]",
+            "options": {
+              "icon": "Info",
+              "text": "No AI components are selected. These settings are ignored."
+            }
+          },
+          {
+            "name": "aiAgentSection",
+            "type": "Microsoft.Common.Section",
+            "label": "AI agent (Azure OpenAI / Foundry)",
+            "visible": "[contains(steps('components').selected, 'aiAgent')]",
+            "elements": [
+              {
+                "name": "openAiDeploymentName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Model deployment name",
+                "defaultValue": "gpt-5-mini",
+                "toolTip": "Name of the Azure OpenAI model deployment.",
+                "constraints": {
+                  "required": true,
+                  "regex": "^[a-zA-Z0-9._-]{2,64}$",
+                  "validationMessage": "Use 2-64 characters: letters, numbers, dot, dash or underscore."
+                }
+              }
+            ]
+          },
+          {
+            "name": "auroraSection",
+            "type": "Microsoft.Common.Section",
+            "label": "Aurora weather model (GPU)",
+            "visible": "[contains(steps('components').selected, 'auroraModel')]",
+            "elements": [
+              {
+                "name": "auroraInfo",
+                "type": "Microsoft.Common.InfoBox",
+                "visible": true,
+                "options": {
+                  "icon": "Warning",
+                  "text": "Aurora runs on a GPU managed-compute endpoint (Standard_NC24ads_A100_v4). The Foundry workspace + endpoint always deploy; the GPU model only deploys when you supply a model asset ID and have A100 quota + accepted marketplace terms."
+                }
+              },
+              {
+                "name": "auroraInstanceType",
+                "type": "Microsoft.Common.TextBox",
+                "label": "GPU instance type",
+                "defaultValue": "Standard_NC24ads_A100_v4",
+                "toolTip": "GPU VM size for the Aurora managed-compute deployment. You must have quota for it in the selected region.",
+                "constraints": {
+                  "required": true,
+                  "regex": "^[A-Za-z0-9_]{4,64}$",
+                  "validationMessage": "Enter a valid VM size, e.g. Standard_NC24ads_A100_v4."
+                }
+              },
+              {
+                "name": "auroraModelAssetId",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Aurora model asset ID (optional)",
+                "defaultValue": "",
+                "toolTip": "Registry model asset, e.g. azureml://registries/azureml/models/<Aurora-model>/versions/<n>. Leave blank to provision the workspace + endpoint only and deploy the model from the portal.",
+                "constraints": {
+                  "required": false
+                }
+              }
+            ]
           }
         ]
       }
@@ -138,11 +242,16 @@
     "outputs": {
       "location": "[location()]",
       "geoCatalogName": "[basics('geoCatalogName')]",
-      "deployWorkstation": "[steps('components').deployWorkstation]",
-      "deploySampleStorage": "[steps('components').deploySampleStorage]",
-      "adminUsername": "[if(steps('components').deployWorkstation, steps('workstationConfig').adminUsername, 'azureuser')]",
-      "adminPassword": "[if(steps('components').deployWorkstation, steps('workstationConfig').adminPassword.password, '')]",
-      "vmSize": "[if(steps('components').deployWorkstation, steps('workstationConfig').vmSize, 'Standard_D4s_v3')]"
+      "deployWorkstation": "[contains(steps('components').selected, 'workstation')]",
+      "deploySampleStorage": "[contains(steps('components').selected, 'sampleStorage')]",
+      "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
+      "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
+      "adminUsername": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminUsername, 'azureuser')]",
+      "adminPassword": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminPassword.password, '')]",
+      "vmSize": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').vmSize, 'Standard_D4s_v3')]",
+      "openAiDeploymentName": "[if(contains(steps('components').selected, 'aiAgent'), steps('aiConfig').aiAgentSection.openAiDeploymentName, 'gpt-5-mini')]",
+      "auroraInstanceType": "[if(contains(steps('components').selected, 'auroraModel'), steps('aiConfig').auroraSection.auroraInstanceType, 'Standard_NC24ads_A100_v4')]",
+      "auroraModelAssetId": "[if(contains(steps('components').selected, 'auroraModel'), steps('aiConfig').auroraSection.auroraModelAssetId, '')]"
     }
   }
 }

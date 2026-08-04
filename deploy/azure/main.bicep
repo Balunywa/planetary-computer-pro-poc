@@ -48,8 +48,38 @@ param adminPassword string = ''
 @description('Size of the workstation VM.')
 param vmSize string = 'Standard_D4s_v3'
 
-@description('Base URL (raw) that hosts setup.ps1 and ingest_sample.py. Point this at your fork if you change the scripts.')
+@description('Base URL (raw) that hosts setup.ps1. Point this at your fork if you change the provisioning script.')
 param artifactsBaseUrl string = 'https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure'
+
+@description('Git repository the workstation clones — the official Microsoft Planetary Computer Pro samples/notebooks/apps/tools. Point this at a fork if desired.')
+param officialRepoUrl string = 'https://github.com/Azure/microsoft-planetary-computer-pro.git'
+
+@description('Deploy an Azure OpenAI (Microsoft Foundry) account + model deployment for agentic / reasoning GeoAI scenarios against the GeoCatalog.')
+param deployAiAgent bool = true
+
+@description('Name of the Azure OpenAI (Foundry) model deployment.')
+param openAiDeploymentName string = 'gpt-5-mini'
+
+@description('Azure OpenAI model name.')
+param openAiModelName string = 'gpt-5-mini'
+
+@description('Azure OpenAI model version.')
+param openAiModelVersion string = '2025-08-07'
+
+@description('Azure OpenAI deployment SKU.')
+param openAiSkuName string = 'GlobalStandard'
+
+@description('Azure OpenAI deployment capacity, in thousands of tokens per minute (TPM).')
+param openAiCapacity int = 10
+
+@description('Deploy the Microsoft Aurora weather foundation model on a GPU-backed Foundry managed-compute endpoint. Requires GPU (A100) quota, an Azure Marketplace subscription, and acceptance of the model terms.')
+param deployAuroraModel bool = false
+
+@description('GPU VM size for the Aurora managed-compute deployment. Aurora requires an A100-class SKU; you must have quota for it in the selected region.')
+param auroraInstanceType string = 'Standard_NC24ads_A100_v4'
+
+@description('Registry model asset ID for the Aurora managed-compute deployment (for example azureml://registries/azureml/models/<Aurora-model>/versions/<n>). Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms).')
+param auroraModelAssetId string = ''
 
 // ------------------------------------------------------------------------------------
 // Variables
@@ -74,6 +104,22 @@ var sampleContainerName = 'sample-assets'
 var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 
 var networkNeeded = deployWorkstation
+
+// Azure OpenAI (Foundry) agent.
+var openAiName = toLower('pcpro-oai-${uniqueString(resourceGroup().id)}')
+// Cognitive Services OpenAI User — key-less inference access.
+var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+
+// Aurora managed-compute (Azure ML / Foundry) workspace + GPU endpoint.
+var amlSuffix = take(uniqueString(resourceGroup().id), 8)
+var amlWorkspaceName = 'pcpro-aml-${amlSuffix}'
+var amlStorageName = toLower('pcproaml${take(uniqueString(resourceGroup().id), 12)}')
+var amlKeyVaultName = 'pcpro-kv-${amlSuffix}'
+var auroraEndpointName = 'aurora-${amlSuffix}'
+var auroraDeploymentName = 'aurora'
+// The GPU model deployment only runs when a model asset ID is supplied (it needs GPU
+// quota + accepted marketplace terms); otherwise just the workspace + endpoint deploy.
+var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -292,8 +338,12 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         value: effectiveGeoCatalogName
       }
       {
-        name: 'ArtifactsBaseUrl'
-        value: artifactsBaseUrl
+        name: 'GeoCatalogRegion'
+        value: location
+      }
+      {
+        name: 'RepoUrl'
+        value: officialRepoUrl
       }
       {
         name: 'SampleContainerUrl'
@@ -303,8 +353,151 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         name: 'IngestIdentityObjectId'
         value: deploySampleStorage ? ingestIdentity.properties.principalId : ''
       }
+      {
+        name: 'FoundryEndpoint'
+        value: deployAiAgent ? openAi.properties.endpoint : ''
+      }
+      {
+        name: 'FoundryDeployment'
+        value: deployAiAgent ? openAiDeploymentName : ''
+      }
+      {
+        name: 'AuroraEndpoint'
+        value: deployAuroraModel ? auroraEndpoint.properties.scoringUri : ''
+      }
     ]
-    timeoutInSeconds: 1200
+    timeoutInSeconds: 1800
+  }
+}
+
+// ------------------------------------------------------------------------------------
+// Optional: Azure OpenAI (Microsoft Foundry) — agentic / reasoning GeoAI scenarios
+// ------------------------------------------------------------------------------------
+
+resource openAi 'Microsoft.CognitiveServices/accounts@2024-10-01' = if (deployAiAgent) {
+  name: openAiName
+  location: location
+  kind: 'OpenAI'
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    customSubDomainName: openAiName
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployAiAgent) {
+  parent: openAi
+  name: openAiDeploymentName
+  sku: {
+    name: openAiSkuName
+    capacity: openAiCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: openAiModelName
+      version: openAiModelVersion
+    }
+    versionUpgradeOption: 'NoAutoUpgrade'
+  }
+}
+
+// Grant the workstation's managed identity key-less access to Azure OpenAI.
+resource openAiWorkstationRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAiAgent && deployWorkstation) {
+  name: guid(openAi.id, workstationName, cognitiveServicesOpenAiUserRoleId)
+  scope: openAi
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    principalId: deployWorkstation ? workstation.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant the interactive deployer the same role so they can call Foundry with their sign-in.
+resource openAiDeployerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAiAgent) {
+  name: guid(openAi.id, deployer().objectId, cognitiveServicesOpenAiUserRoleId)
+  scope: openAi
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    principalId: deployer().objectId
+  }
+}
+
+// ------------------------------------------------------------------------------------
+// Optional: Microsoft Aurora weather model on a Foundry (Azure ML) managed-compute GPU
+// endpoint. The workspace + endpoint always deploy with this component; the GPU model
+// deployment only runs when an Aurora model asset ID is supplied (it needs GPU quota +
+// accepted marketplace terms).
+// ------------------------------------------------------------------------------------
+
+resource amlStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = if (deployAuroraModel) {
+  name: amlStorageName
+  location: location
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    allowBlobPublicAccess: false
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+  }
+}
+
+resource amlKeyVault 'Microsoft.KeyVault/vaults@2023-07-01' = if (deployAuroraModel) {
+  name: amlKeyVaultName
+  location: location
+  properties: {
+    tenantId: subscription().tenantId
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    accessPolicies: []
+  }
+}
+
+resource amlWorkspace 'Microsoft.MachineLearningServices/workspaces@2023-10-01' = if (deployAuroraModel) {
+  name: amlWorkspaceName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    friendlyName: amlWorkspaceName
+    storageAccount: amlStorage.id
+    keyVault: amlKeyVault.id
+  }
+}
+
+resource auroraEndpoint 'Microsoft.MachineLearningServices/workspaces/onlineEndpoints@2023-10-01' = if (deployAuroraModel) {
+  parent: amlWorkspace
+  name: auroraEndpointName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    authMode: 'Key'
+  }
+}
+
+resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments@2023-10-01' = if (deployAuroraDeployment) {
+  parent: auroraEndpoint
+  name: auroraDeploymentName
+  location: location
+  sku: {
+    name: 'Default'
+    capacity: 1
+  }
+  properties: {
+    endpointComputeType: 'Managed'
+    model: auroraModelAssetId
+    instanceType: auroraInstanceType
   }
 }
 
@@ -321,5 +514,10 @@ output bastionName string = networkNeeded ? bastionName : 'not-deployed'
 output sampleStorageAccount string = deploySampleStorage ? sampleStorageName : 'not-deployed'
 output sampleContainer string = deploySampleStorage ? sampleContainerName : 'not-deployed'
 output sampleContainerUrl string = deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : 'not-deployed'
+output aiAgentEndpoint string = deployAiAgent ? openAi.properties.endpoint : 'not-deployed'
+output aiAgentDeployment string = deployAiAgent ? openAiDeploymentName : 'not-deployed'
+output auroraWorkspace string = deployAuroraModel ? amlWorkspaceName : 'not-deployed'
+output auroraEndpoint string = deployAuroraModel ? auroraEndpointName : 'not-deployed'
+output auroraModelDeployed bool = deployAuroraDeployment
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'

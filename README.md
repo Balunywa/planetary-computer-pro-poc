@@ -1,35 +1,58 @@
 # Microsoft Planetary Computer Pro Rapid POC
 
-A configurable rapid POC that stands up a **Microsoft Planetary Computer Pro GeoCatalog**
-and proves the end-to-end **ingest → configure → visualize** flow with a single
-**Deploy to Azure** button. Choose the complete environment or only the components you need:
+A **turnkey Azure environment** that stands up everything the official
+[Microsoft Planetary Computer Pro](https://github.com/Azure/microsoft-planetary-computer-pro)
+samples assume you already have — a **GeoCatalog**, a secure analytics workstation, sample
+storage, and a scoped managed identity — with a single **Deploy to Azure** button, and then
+**clones the official repository onto the workstation and pre-wires it** so an engineer can
+open Microsoft's notebooks and run them immediately.
+
+The official repo is *code* (notebooks, the Aurora storm-impact app, tools, and the GeoAI
+SDK). Its own quick-start still expects you to bring a deployed GeoCatalog, blob storage,
+identities, networking, and a hand-edited `.env`. **This repo provides exactly those
+pieces** — the landing zone — so you don't hand-build them for every POC.
+
+What the button deploys (pick the complete environment or only what you need):
 
 - a **GeoCatalog** (the Planetary Computer Pro resource that stores, indexes, and serves
   your geospatial data using the open [STAC](https://learn.microsoft.com/azure/planetary-computer/stac-overview) standard),
-- an optional **analytics workstation** (a Windows VM with Visual Studio Code, Python, and
-  the Azure CLI) that runs an automated sample which creates a STAC collection, ingests
-  sample Sentinel-2 imagery, and configures it for visualization, and
+- an optional **analytics workstation** (a Windows VM with Visual Studio Code, Python, Git,
+  and the Azure CLI) that **clones the official repo**, installs its dependencies and the
+  Planetary Computer Pro SDK, and pre-fills the environment so the notebooks are ready to
+  run, and
 - an optional **sample-data storage account + user-assigned managed identity** for the
-  secure managed-identity ingestion path (bring your own data).
+  secure managed-identity ingestion path (bring your own data),
+- an optional **AI agent** — an **Azure OpenAI (Microsoft Foundry)** account + GPT model
+  deployment (`gpt-5-mini` by default) for agentic / reasoning GeoAI scenarios against the
+  GeoCatalog, key-less via managed identity, and
+- an optional **Aurora weather model** on a **Foundry (Azure ML) GPU managed-compute
+  endpoint**. The workspace + endpoint always deploy with this component; the GPU model
+  deployment only runs when you supply a model asset ID and have A100 quota + accepted
+  marketplace terms (so a default deploy never hard-fails on quota).
 
 The workstation is network-isolated and reached privately over **Azure Bastion** — no
-public RDP port. No custom platform logic runs here; the GeoCatalog does the work, and
-this repo just stands up the environment and drives the documented APIs for you.
+public RDP port. This repo deploys and wires the environment; the actual ingest / configure
+/ visualize / GeoAI logic is Microsoft's official code, unchanged.
 
-> **Scope:** this POC deploys the GeoCatalog and demonstrates ingesting a small set of
-> **sample** Sentinel-2 scenes from the public Planetary Computer. It is a proof of
-> concept, not a production landing zone.
+> **Scope:** this POC provisions the environment and clones Microsoft's official samples.
+> The introductory notebooks (STAC ingest + visualization of sample Sentinel-2 imagery) run
+> out of the box. The advanced Aurora storm-impact app needs the **Aurora** model on a
+> Foundry **GPU** endpoint (`Standard_NC24ads_A100_v4`): select the **Aurora weather model**
+> component to provision the Foundry workspace + endpoint, then supply a model asset ID (and
+> have GPU quota + accepted marketplace terms) to deploy the model — see
+> [Where Azure AI Foundry fits](#where-azure-ai-foundry-fits).
 
 ## Logical architecture
 
 The GeoCatalog is the top-level container for geospatial data. The analytics workstation
 runs Visual Studio Code and Python inside the virtual network; users connect through Azure
-Bastion, and direct inbound RDP is blocked. From the workstation, the sample script signs
-in with the Azure CLI, creates a STAC collection in the GeoCatalog, registers the public
-Planetary Computer container as a SAS-token ingestion source, ingests sample imagery, and
-applies render + mosaic configuration so the collection is visible in the GeoCatalog
-Explorer. The optional storage account and managed identity support the alternative
-managed-identity ingestion path for your own data.
+Bastion, and direct inbound RDP is blocked. At deploy time the workstation clones the
+official Microsoft Planetary Computer Pro repository, installs its dependencies plus the
+Planetary Computer Pro SDK, and writes a pre-filled environment. From there an engineer
+signs in with the Azure CLI and runs Microsoft's official notebooks — creating a STAC
+collection, ingesting sample Sentinel-2 imagery, and applying render + mosaic configuration
+so the collection is visible in the GeoCatalog Explorer. The optional storage account and
+managed identity support the managed-identity ingestion path for your own data.
 
 This mirrors the Planetary Computer Pro reference architecture — public + private data
 flow into the GeoCatalog (the enterprise STAC catalog), which then feeds downstream apps
@@ -43,11 +66,11 @@ flowchart LR
   end
 
   subgraph poc[This POC]
-    user([You]) -->|Bastion RDP tunnel| ws[Analytics workstation<br/>VS Code + Python + Azure CLI]
+    user([You]) -->|Bastion RDP tunnel| ws[Analytics workstation<br/>VS Code + Python + Git<br/>official repo cloned & pre-wired]
     gc[(GeoCatalog — PC Pro<br/>Microsoft.Orbital/geoCatalogs<br/>enterprise STAC catalog)]
   end
 
-  ws -->|STAC / ingestion APIs| gc
+  ws -->|official notebooks<br/>STAC / ingestion APIs| gc
   pc -->|SAS-token ingestion source| gc
   store -. managed-identity ingestion source .-> gc
 
@@ -77,8 +100,37 @@ Foundry is the **model plane**:
   through the same managed-identity ingestion path this POC sets up, so outputs become
   first-class, searchable layers alongside the source imagery.
 
-This POC deploys the data plane (the GeoCatalog + ingestion) that a Foundry integration
-would build on; it does not deploy Foundry itself.
+This POC deploys the data plane (the GeoCatalog + ingestion) **and, optionally, the model
+plane**: selecting the **AI agent** component provisions an Azure OpenAI (Foundry) account +
+GPT deployment (key-less via managed identity), and selecting the **Aurora weather model**
+component provisions a Foundry (Azure ML) workspace + GPU managed-compute endpoint — with
+the GPU model deployment gated behind a model asset ID + quota so it never hard-fails.
+
+When the AI agent is deployed, the workstation is pre-wired with `FOUNDRY_ENDPOINT` and
+`FOUNDRY_DEPLOYMENT` machine environment variables, and the Aurora endpoint (when deployed)
+is pre-filled into the storm-impact app's `.env` as `AURORA_FOUNDRY_ENDPOINT`. Deployment
+outputs also surface `aiAgentEndpoint`, `aiAgentDeployment`, `auroraWorkspace`,
+`auroraEndpoint`, and `auroraModelDeployed`.
+
+## What this adds over the official repo
+
+The [official Microsoft repository](https://github.com/Azure/microsoft-planetary-computer-pro)
+ships the *code* — notebooks, the Aurora storm-impact app, tools, and the GeoAI SDK — and
+assumes you already have the Azure infrastructure. This repo fills that gap:
+
+| The official samples assume you have… | This repo provisions it |
+| --- | --- |
+| A deployed **GeoCatalog** | `Microsoft.Orbital/geoCatalogs` created by the button |
+| A place to **run the notebooks** | Bastion-only Windows workstation with VS Code, Python, Git |
+| The **code** on that machine | Clones the official repo + installs its deps and the PC Pro SDK |
+| **Blob storage** for assets/outputs | Sample storage account + container |
+| An **identity** wired to the GeoCatalog | User-assigned managed identity with Storage Blob Data Reader, associated to the GeoCatalog |
+| A hand-edited **`.env`** | Pre-filled with the GeoCatalog URI + provisioned storage (no secrets) |
+| A **model plane** to run GeoAI | Optional Azure OpenAI (Foundry) agent + optional Aurora GPU Foundry endpoint |
+
+Net effect: one **Deploy to Azure** button turns a set of prerequisites and a manual setup
+guide into a ready-to-run environment — without forking or duplicating Microsoft's code, so
+their samples stay the source of truth.
 
 ## Prerequisites: resource providers
 
@@ -89,6 +141,9 @@ would build on; it does not deploy Foundry itself.
 | `Microsoft.Network` | VNet, NSG, public IP, NIC, Bastion |
 | `Microsoft.Storage` | Sample-data storage account |
 | `Microsoft.ManagedIdentity` | Ingestion managed identity |
+| `Microsoft.CognitiveServices` | Azure OpenAI (Foundry) agent (optional) |
+| `Microsoft.MachineLearningServices` | Aurora Foundry workspace + GPU endpoint (optional) |
+| `Microsoft.KeyVault` | Backing key vault for the Aurora Foundry workspace (optional) |
 
 Register `Microsoft.Orbital` before deploying (the portal auto-registers the others during
 validation):
@@ -118,8 +173,9 @@ the workstation, and select **Review + create**.
 
 > The GeoCatalog and Bastion provision in parallel; a typical deployment completes in
 > about **10–20 minutes** (the GeoCatalog is the long pole). The workstation software
-> install is capped at 20 minutes. The deployment status may show "Created" before the
-> GeoCatalog is fully ready.
+> install — tooling, cloning the official repo, and installing its dependencies — is capped
+> at 30 minutes. The deployment status may show "Created" before the GeoCatalog is fully
+> ready.
 
 ## Deploy from the command line (optional)
 
@@ -155,58 +211,57 @@ az role assignment create \
               --namespace Microsoft.Orbital --resource-type geoCatalogs --query id -o tsv)"
 ```
 
-## Run the sample (ingest → configure → visualize)
+## Run the official samples (ingest → configure → visualize)
 
-The sample runs on the workstation because it drives the GeoCatalog data-plane APIs with
-your signed-in identity.
+The workstation already has Microsoft's official repository cloned to
+`C:\Users\Public\Desktop\microsoft-planetary-computer-pro`, its dependencies and the
+Planetary Computer Pro SDK installed, and a pre-filled environment. You run Microsoft's
+notebooks unchanged — the data-plane calls use your signed-in identity.
 
-1. Open the workstation page in the portal → **Connect → Connect via Bastion** (or use the
-   Bastion RDP tunnel). Direct public RDP is blocked.
-2. On the workstation desktop, open **connection-info.txt** for the GeoCatalog name and the
-   exact commands.
-3. Copy the **GeoCatalog URI** from the portal: your GeoCatalog resource → **Overview →
-   GeoCatalog URI**.
-4. In a terminal on the workstation:
+1. Open the workstation page in the portal → **Connect → Connect via Bastion**. Direct
+   public RDP is blocked.
+2. On the desktop, open **connection-info.txt** for the GeoCatalog name/URI and the exact
+   file paths.
+3. Copy the **GeoCatalog URI** from the portal (your GeoCatalog → **Overview → GeoCatalog
+   URI**) and confirm it matches the pre-filled value.
+4. Open the cloned repo folder in VS Code, sign in with `az login`, and run the tutorial
+   notebook:
 
-   ```powershell
-   az login
-   python "C:\Users\Public\Desktop\ingest_sample.py" --geocatalog-url "<GEOCATALOG_URI>"
+   ```text
+   notebooks\GeoCatalog_Tutorial.ipynb
    ```
 
-   The script creates a STAC collection, registers the public Planetary Computer container
-   as a SAS-token ingestion source, ingests sample Sentinel-2 scenes over southern Iceland,
-   and applies render + mosaic configuration.
+   It creates a STAC collection, registers the public Planetary Computer container as an
+   ingestion source, ingests sample Sentinel-2 scenes, and applies render + mosaic
+   configuration.
 5. Open the **Explorer** at `<GEOCATALOG_URI>/collections` to visualize the imagery.
 
-You can also run [`deploy/azure/ingest_sample.py`](deploy/azure/ingest_sample.py) from any
-machine that has `az login`, Python 3.10+, and the packages
-`pystac-client azure-identity requests pillow`.
+Other official assets already on the workstation:
+
+- `notebooks\create-stac-items.ipynb` — build STAC items from your own rasters.
+- `applications\storm_impact_assessment\hurricane_forecast_infra_impact.ipynb` — the
+  Aurora hurricane-forecast app (needs a Foundry Aurora endpoint + GPU quota; its `.env`
+  is pre-filled with the Azure pieces this template provisioned).
+- `tools\` — STAC Forge, the MPC MCP server, partner-app integration, and more.
 
 ## Use your own data (managed-identity ingestion)
 
 When you deploy the sample storage component, the template also creates a user-assigned
 managed identity (`pcpro-ingest-identity`) with **Storage Blob Data Reader** on the sample
-container, and **associates it with the GeoCatalog** for you. To ingest your own assets:
+container, and **associates it with the GeoCatalog** for you — so the identity is ready for
+the managed-identity ingestion path the official notebooks use. To ingest your own assets:
 
-1. Upload your COGs / rasters and their STAC items to the `sample-assets` container in the
-   deployed storage account.
-2. Register the container as a managed-identity ingestion source. The workstation's
-   `connection-info.txt` has the ready-to-run command — it's the same script, in a
-   bring-your-own-data mode:
-
-   ```powershell
-   python "C:\Users\Public\Desktop\ingest_sample.py" `
-     --geocatalog-url "<GEOCATALOG_URI>" `
-     --managed-identity-container-url "<sampleContainerUrl>" `
-     --managed-identity-object-id "<ingestIdentityObjectId>"
-   ```
-
-   `sampleContainerUrl` and `ingestIdentityObjectId` are deployment outputs. The identity
-   is already assigned to the GeoCatalog and already holds Storage Blob Data Reader on the
-   container, so this single call is all that's needed. See
+1. Upload your COGs / rasters to the `sample-assets` container in the deployed storage
+   account, and build STAC items for them (see
+   `notebooks\create-stac-items.ipynb` in the cloned repo).
+2. Register the container as a **managed-identity ingestion source** using the deployment
+   outputs `sampleContainerUrl` and `ingestIdentityObjectId`. The identity is already
+   assigned to the GeoCatalog and already holds Storage Blob Data Reader on the container,
+   so no extra role setup is needed. See
    [Set up an ingestion source using managed identity](https://learn.microsoft.com/azure/planetary-computer/set-up-ingestion-credentials-managed-identity)
-   for the underlying API.
-3. Post your STAC items to the GeoCatalog Items API (the same pattern the sample uses).
+   for the API the notebooks call.
+3. Post your STAC items to the GeoCatalog Items API (the pattern the tutorial notebook
+   demonstrates).
 
 ## What's in this repo
 
@@ -215,8 +270,8 @@ container, and **associates it with the GeoCatalog** for you. To ingest your own
 | `deploy/azure/main.bicep` | Bicep source — provisions the GeoCatalog, optional workstation (VNet/NSG/Bastion), and optional sample storage + ingestion identity |
 | `deploy/azure/azuredeploy.json` | Compiled ARM template behind the **Deploy to Azure** button |
 | `deploy/azure/createUiDefinition.json` | Portal form for the one-click deployment (component selection + credentials) |
-| `deploy/azure/setup.ps1` | Run by an Azure VM Run Command — installs Python, Azure CLI, VS Code, and the sample script on the workstation |
-| `deploy/azure/ingest_sample.py` | End-to-end sample: create STAC collection, ingest sample Sentinel-2 imagery, configure render + mosaic for visualization |
+| `deploy/azure/setup.ps1` | Run by an Azure VM Run Command — installs Python, Azure CLI, Git, and VS Code, clones the official Microsoft repo, installs its dependencies + the PC Pro SDK, and pre-wires the environment |
+| `deploy/azure/requirements.txt` | Base Python packages the workstation installs so the official notebooks run out of the box |
 | `deploy/azure/teardown.sh` | Deletes the resource group and everything in it |
 
 ## Security
@@ -228,8 +283,9 @@ container, and **associates it with the GeoCatalog** for you. To ingest your own
   the sample container only.
 - The workstation admin password is a `@secure()` deploy-time parameter (not stored in the
   template) and can be rotated with `az vm run-command`.
-- The sample script signs in interactively (`az login`) and never writes tokens to disk;
-  `connection-info.txt` contains no secrets.
+- The official notebooks sign in interactively (`az login`) and never write tokens to disk.
+  The pre-filled `.env` and `connection-info.txt` contain **no secrets** — storage uses
+  managed identity, and the Aurora endpoint/token are placeholders you supply.
 - GeoCatalog data-plane access is governed by Azure RBAC (**GeoCatalog Administrator** /
   **GeoCatalog Reader**). Grant least privilege.
 
