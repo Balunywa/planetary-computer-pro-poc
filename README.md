@@ -2,7 +2,7 @@
 
 A **turnkey Azure environment** that stands up everything the official
 [Microsoft Planetary Computer Pro](https://github.com/Azure/microsoft-planetary-computer-pro)
-samples assume you already have — a **GeoCatalog**, a secure analytics workstation, sample
+samples assume you already have a **GeoCatalog**, a secure analytics workstation, sample
 storage, and a scoped managed identity — with a single **Deploy to Azure** button, and then
 **clones the official repository onto the workstation and pre-wires it** so an engineer can
 open Microsoft's notebooks and run them immediately.
@@ -10,7 +10,7 @@ open Microsoft's notebooks and run them immediately.
 The official repo is *code* (notebooks, the Aurora storm-impact app, tools, and the GeoAI
 SDK). Its own quick-start still expects you to bring a deployed GeoCatalog, blob storage,
 identities, networking, and a hand-edited `.env`. **This repo provides exactly those
-pieces** — the landing zone — so you don't hand-build them for every POC.
+pieces**  the landing zone so you don't hand-build them for every POC.
 
 What the button deploys (pick the complete environment or only what you need):
 
@@ -22,7 +22,7 @@ What the button deploys (pick the complete environment or only what you need):
   run, and
 - an optional **sample-data storage account + user-assigned managed identity** for the
   secure managed-identity ingestion path (bring your own data),
-- an optional **AI agent** — an **Azure OpenAI (Microsoft Foundry)** account + GPT model
+- an optional **AI agent** an **Azure OpenAI (Microsoft Foundry)** account + GPT model
   deployment (`gpt-5-mini` by default) for agentic / reasoning GeoAI scenarios against the
   GeoCatalog, key-less via managed identity, and
 - an optional **Aurora weather model** on a **Foundry (Azure ML) GPU managed-compute
@@ -68,7 +68,7 @@ Planetary Computer Pro with Microsoft applications such as Fabric and Microsoft 
 In the reference architecture, the GeoCatalog is the **geospatial data plane** and Azure AI
 Foundry is the **model plane**:
 
-- **Model inputs** — an application or agent queries the GeoCatalog's STAC/Tiler/SAS APIs
+- **Model inputs** an application or agent queries the GeoCatalog's STAC/Tiler/SAS APIs
   (authenticated with Microsoft Entra ID / managed identity) to pull imagery and metadata,
   and passes it to a GeoAI model hosted in Foundry (discriminative models like land
   classification and object detection, foundation models like Aurora for weather, or
