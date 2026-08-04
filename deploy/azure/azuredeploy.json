@@ -1,0 +1,390 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "7368255102662711092"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "allowedValues": [
+        "eastus",
+        "northcentralus",
+        "westeurope",
+        "canadacentral",
+        "uksouth"
+      ],
+      "metadata": {
+        "description": "Azure region for all resources. Planetary Computer Pro GeoCatalog is available only in the regions listed here (Preview)."
+      }
+    },
+    "geoCatalogName": {
+      "type": "string",
+      "defaultValue": "[format('pcpro{0}', uniqueString(resourceGroup().id))]",
+      "minLength": 3,
+      "maxLength": 24,
+      "metadata": {
+        "description": "Name of the Planetary Computer Pro GeoCatalog resource. Lowercase letters and numbers; must be unique within the region."
+      }
+    },
+    "geoCatalogTier": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic"
+      ],
+      "metadata": {
+        "description": "GeoCatalog service tier."
+      }
+    },
+    "deployWorkstation": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the analytics workstation (Windows VM + VS Code + Python + Azure CLI) reached privately over Azure Bastion. It runs the sample ingestion script."
+      }
+    },
+    "deploySampleStorage": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy a sample-data storage account and a user-assigned managed identity for the managed-identity ingestion path (bring-your-own-data scenario)."
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "azureuser",
+      "metadata": {
+        "description": "Administrator username for the workstation VM."
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Administrator password for the workstation VM (used for RDP over the Azure Bastion tunnel). Leave empty when not deploying the workstation."
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4s_v3",
+      "metadata": {
+        "description": "Size of the workstation VM."
+      }
+    },
+    "artifactsBaseUrl": {
+      "type": "string",
+      "defaultValue": "https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure",
+      "metadata": {
+        "description": "Base URL (raw) that hosts setup.ps1 and ingest_sample.py. Point this at your fork if you change the scripts."
+      }
+    }
+  },
+  "variables": {
+    "namePrefix": "pcpro",
+    "vnetName": "[format('{0}-vnet', variables('namePrefix'))]",
+    "nsgName": "[format('{0}-workstation-nsg', variables('namePrefix'))]",
+    "bastionName": "[format('{0}-bastion', variables('namePrefix'))]",
+    "bastionPipName": "[format('{0}-bastion-pip', variables('namePrefix'))]",
+    "workstationName": "[format('{0}-workstation', variables('namePrefix'))]",
+    "workstationNicName": "[format('{0}-workstation-nic', variables('namePrefix'))]",
+    "sampleStorageName": "[toLower(format('pcpro{0}', uniqueString(resourceGroup().id)))]",
+    "ingestIdentityName": "[format('{0}-ingest-identity', variables('namePrefix'))]",
+    "sampleContainerName": "sample-assets",
+    "storageBlobDataReaderRoleId": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",
+    "networkNeeded": "[parameters('deployWorkstation')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Orbital/geoCatalogs",
+      "apiVersion": "2026-04-15",
+      "name": "[parameters('geoCatalogName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "tier": "[parameters('geoCatalogTier')]"
+      }
+    },
+    {
+      "condition": "[parameters('deploySampleStorage')]",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('ingestIdentityName')]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "condition": "[parameters('deploySampleStorage')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('sampleStorageName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "allowBlobPublicAccess": false,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true
+      }
+    },
+    {
+      "condition": "[parameters('deploySampleStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', variables('sampleStorageName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deploySampleStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('sampleStorageName'), 'default', variables('sampleContainerName'))]",
+      "properties": {
+        "publicAccess": "None"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('sampleStorageName'), 'default')]"
+      ]
+    },
+    {
+      "condition": "[parameters('deploySampleStorage')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('ingestIdentityName'), variables('storageBlobDataReaderRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataReaderRoleId'))]",
+        "principalId": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
+      ]
+    },
+    {
+      "condition": "[variables('networkNeeded')]",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-11-01",
+      "name": "[variables('nsgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": []
+      }
+    },
+    {
+      "condition": "[variables('networkNeeded')]",
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-11-01",
+      "name": "[variables('vnetName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.20.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "workstation-subnet",
+            "properties": {
+              "addressPrefix": "10.20.1.0/24",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+              }
+            }
+          },
+          {
+            "name": "AzureBastionSubnet",
+            "properties": {
+              "addressPrefix": "10.20.2.0/26"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+      ]
+    },
+    {
+      "condition": "[variables('networkNeeded')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-11-01",
+      "name": "[variables('bastionPipName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      }
+    },
+    {
+      "condition": "[variables('networkNeeded')]",
+      "type": "Microsoft.Network/bastionHosts",
+      "apiVersion": "2023-11-01",
+      "name": "[variables('bastionName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "enableTunneling": true,
+        "ipConfigurations": [
+          {
+            "name": "bastion-ipconfig",
+            "properties": {
+              "subnet": {
+                "id": "[if(variables('networkNeeded'), format('{0}/subnets/AzureBastionSubnet', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))), '')]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('bastionPipName'))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('bastionPipName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployWorkstation')]",
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-11-01",
+      "name": "[variables('workstationNicName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[if(variables('networkNeeded'), format('{0}/subnets/workstation-subnet', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))), '')]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployWorkstation')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('workstationName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "pcpro-ws",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "2022-datacenter-azure-edition",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('workstationNicName'))]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('workstationNicName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployWorkstation')]",
+      "type": "Microsoft.Compute/virtualMachines/runCommands",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/{1}', variables('workstationName'), 'provision-workstation')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "source": {
+          "scriptUri": "[format('{0}/setup.ps1', parameters('artifactsBaseUrl'))]"
+        },
+        "parameters": [
+          {
+            "name": "GeoCatalogName",
+            "value": "[parameters('geoCatalogName')]"
+          },
+          {
+            "name": "ArtifactsBaseUrl",
+            "value": "[parameters('artifactsBaseUrl')]"
+          }
+        ],
+        "timeoutInSeconds": 2400
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "geoCatalogName": {
+      "type": "string",
+      "value": "[parameters('geoCatalogName')]"
+    },
+    "geoCatalogResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Orbital/geoCatalogs', parameters('geoCatalogName'))]"
+    },
+    "geoCatalogPortalHint": {
+      "type": "string",
+      "metadata": {
+        "description": "Open the GeoCatalog in the portal and copy the GeoCatalog URI from the Overview blade; use it as GEOCATALOG_URL for the ingest script and Explorer."
+      },
+      "value": "[format('Portal → {0} → Overview → GeoCatalog URI', parameters('geoCatalogName'))]"
+    },
+    "workstationName": {
+      "type": "string",
+      "value": "[if(parameters('deployWorkstation'), variables('workstationName'), 'not-deployed')]"
+    },
+    "bastionName": {
+      "type": "string",
+      "value": "[if(variables('networkNeeded'), variables('bastionName'), 'not-deployed')]"
+    },
+    "sampleStorageAccount": {
+      "type": "string",
+      "value": "[if(parameters('deploySampleStorage'), variables('sampleStorageName'), 'not-deployed')]"
+    },
+    "sampleContainer": {
+      "type": "string",
+      "value": "[if(parameters('deploySampleStorage'), variables('sampleContainerName'), 'not-deployed')]"
+    },
+    "ingestIdentityClientId": {
+      "type": "string",
+      "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').clientId, 'not-deployed')]"
+    }
+  }
+}

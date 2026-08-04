@@ -1,0 +1,148 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": true,
+      "basics": {
+        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus an optional analytics workstation and sample-data storage. Choose the full environment or only the components you need. The workstation is reached privately over Azure Bastion.",
+        "location": {
+          "label": "Region",
+          "toolTip": "GeoCatalog is available in these regions during Preview.",
+          "resourceTypes": [
+            "Microsoft.Orbital/geoCatalogs"
+          ],
+          "allowedValues": [
+            "eastus",
+            "northcentralus",
+            "westeurope",
+            "canadacentral",
+            "uksouth"
+          ]
+        }
+      }
+    },
+    "basics": [
+      {
+        "name": "geoCatalogName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "GeoCatalog name",
+        "defaultValue": "",
+        "toolTip": "Lowercase letters and numbers, 3-24 characters. Leave blank to auto-generate a unique name.",
+        "constraints": {
+          "required": false,
+          "regex": "^[a-z0-9]{3,24}$",
+          "validationMessage": "3-24 lowercase letters or numbers."
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "components",
+        "label": "Components",
+        "elements": [
+          {
+            "name": "componentsInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "The GeoCatalog is always deployed. Add the workstation to run the automated sample ingestion, and sample storage for the bring-your-own-data ingestion path."
+            }
+          },
+          {
+            "name": "deployWorkstation",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Deploy analytics workstation (VS Code + Python over Bastion)",
+            "defaultValue": true,
+            "toolTip": "A Windows VM, network-isolated, that runs the automated STAC ingest + visualization sample."
+          },
+          {
+            "name": "deploySampleStorage",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Deploy sample-data storage + ingestion managed identity",
+            "defaultValue": true,
+            "toolTip": "Storage account and user-assigned managed identity for the managed-identity ingestion path."
+          }
+        ]
+      },
+      {
+        "name": "workstationConfig",
+        "label": "Workstation",
+        "elements": [
+          {
+            "name": "workstationRequired",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[not(steps('components').deployWorkstation)]",
+            "options": {
+              "icon": "Info",
+              "text": "The workstation is not selected. These settings are ignored."
+            }
+          },
+          {
+            "name": "adminUsername",
+            "type": "Microsoft.Compute.UserNameTextBox",
+            "label": "Administrator username",
+            "defaultValue": "azureuser",
+            "toolTip": "Administrator login for the workstation VM.",
+            "osPlatform": "Windows",
+            "constraints": {
+              "required": "[steps('components').deployWorkstation]"
+            },
+            "visible": "[steps('components').deployWorkstation]"
+          },
+          {
+            "name": "adminPassword",
+            "type": "Microsoft.Compute.CredentialsCombo",
+            "label": {
+              "password": "Administrator password",
+              "confirmPassword": "Confirm password"
+            },
+            "toolTip": {
+              "password": "Used for RDP over the Azure Bastion tunnel."
+            },
+            "osPlatform": "Windows",
+            "constraints": {
+              "required": "[steps('components').deployWorkstation]"
+            },
+            "options": {
+              "hideConfirmation": false
+            },
+            "visible": "[steps('components').deployWorkstation]"
+          },
+          {
+            "name": "vmSize",
+            "type": "Microsoft.Compute.SizeSelector",
+            "label": "Workstation size",
+            "toolTip": "VM size for the workstation.",
+            "recommendedSizes": [
+              "Standard_D4s_v3",
+              "Standard_D2s_v3"
+            ],
+            "constraints": {
+              "allowedSizes": []
+            },
+            "osPlatform": "Windows",
+            "imageReference": {
+              "publisher": "MicrosoftWindowsServer",
+              "offer": "WindowsServer",
+              "sku": "2022-datacenter-azure-edition"
+            },
+            "count": 1,
+            "visible": "[steps('components').deployWorkstation]"
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "location": "[location()]",
+      "geoCatalogName": "[if(empty(basics('geoCatalogName')), concat('pcpro', take(uniqueString(subscription().subscriptionId, resourceGroup().id), 12)), basics('geoCatalogName'))]",
+      "deployWorkstation": "[steps('components').deployWorkstation]",
+      "deploySampleStorage": "[steps('components').deploySampleStorage]",
+      "adminUsername": "[if(steps('components').deployWorkstation, steps('workstationConfig').adminUsername, 'azureuser')]",
+      "adminPassword": "[if(steps('components').deployWorkstation, steps('workstationConfig').adminPassword.password, '')]",
+      "vmSize": "[if(steps('components').deployWorkstation, steps('workstationConfig').vmSize, 'Standard_D4s_v3')]"
+    }
+  }
+}

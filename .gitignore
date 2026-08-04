@@ -1,0 +1,20 @@
+# Azure / Bicep
+*.azuredownload.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets / params
+*.parameters.local.json
+.env
