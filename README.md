@@ -56,32 +56,10 @@ managed identity support the managed-identity ingestion path for your own data.
 
 This mirrors the Planetary Computer Pro reference architecture — public + private data
 flow into the GeoCatalog (the enterprise STAC catalog), which then feeds downstream apps
-and GeoAI models — using this POC's concrete components:
+and GeoAI models — using this POC's concrete components (every box is an Azure resource this
+template provisions in your subscription; the AI agent and Aurora are optional):
 
-```mermaid
-flowchart LR
-  subgraph sources[Data sources]
-    pc[Public Planetary Computer<br/>Sentinel-2-l2a open data]
-    store[(Private data<br/>sample storage + BYO<br/>COGs / drone imagery)]
-  end
-
-  subgraph poc[This POC]
-    user([You]) -->|Bastion RDP tunnel| ws[Analytics workstation<br/>VS Code + Python + Git<br/>official repo cloned & pre-wired]
-    gc[(GeoCatalog — PC Pro<br/>Microsoft.Orbital/geoCatalogs<br/>enterprise STAC catalog)]
-  end
-
-  ws -->|official notebooks<br/>STAC / ingestion APIs| gc
-  pc -->|SAS-token ingestion source| gc
-  store -. managed-identity ingestion source .-> gc
-
-  gc --> exp[Explorer<br/>visualize]
-  gc --> gis[ArcGIS Pro / QGIS<br/>3P apps]
-  gc --> app[Custom web apps<br/>STAC / Tiler / SAS APIs]
-  gc --> agents[Agents]
-
-  gc -->|Model inputs| foundry[[Azure AI Foundry<br/>GeoAI models]]
-  foundry -->|Model outputs ingested back| gc
-```
+[![Logical architecture for the Planetary Computer Pro POC: public and private data ingest into a GeoCatalog inside your Azure subscription, which feeds the optional Microsoft Foundry GeoAI models (Azure OpenAI agent and Aurora) and downstream apps.](deploy/azure/media/logical-architecture.png)](deploy/azure/media/logical-architecture.png)
 
 ### Where Azure AI Foundry fits
 
