@@ -109,7 +109,9 @@ def find_ingestion_source(geocatalog_url: str, container_url: str) -> Optional[D
         )
         raise_for_status(detail)
         detail = detail.json()
-        if detail["connectionInfo"]["containerUrl"] == container_url:
+        info = detail["connectionInfo"]
+        # SAS sources expose containerUrl; managed-identity sources expose containerUri.
+        if info.get("containerUrl") == container_url or info.get("containerUri") == container_url:
             return detail
     return None
 
@@ -125,6 +127,31 @@ def create_ingestion_source(geocatalog_url: str, container_url: str, sas_token: 
         params={"api-version": API_VERSION},
     )
     raise_for_status(resp)
+
+
+def create_managed_identity_source(geocatalog_url: str, container_url: str, object_id: str) -> None:
+    """Register a Blob container as a managed-identity ingestion source (BYO-data path).
+
+    Uses the user-assigned managed identity already associated with the GeoCatalog,
+    identified by its object (principal) id. That identity must hold Storage Blob Data
+    Reader on the container (the template grants this for the sample container).
+    """
+    container_url = container_url.rstrip("/")
+    existing = find_ingestion_source(geocatalog_url, container_url)
+    if existing:
+        print(f"Managed-identity ingestion source already exists for {container_url}.")
+        return
+    resp = requests.post(
+        f"{geocatalog_url}/inma/ingestion-sources",
+        json={
+            "kind": "BlobManagedIdentity",
+            "connectionInfo": {"containerUri": container_url, "objectId": object_id},
+        },
+        headers=bearer(),
+        params={"api-version": API_VERSION},
+    )
+    raise_for_status(resp)
+    print(f"Created managed-identity ingestion source for {container_url}.")
 
 
 def remove_ingestion_source(geocatalog_url: str, source_id: str) -> None:
@@ -260,12 +287,39 @@ def main() -> int:
         default=os.environ.get("GEOCATALOG_URL"),
         help="GeoCatalog URI (from the portal Overview blade). Or set GEOCATALOG_URL.",
     )
+    parser.add_argument(
+        "--managed-identity-container-url",
+        default=os.environ.get("MI_CONTAINER_URL"),
+        help="Register this Blob container as a managed-identity ingestion source (BYO-data "
+        "path) and exit, instead of running the sample ingest. Or set MI_CONTAINER_URL.",
+    )
+    parser.add_argument(
+        "--managed-identity-object-id",
+        default=os.environ.get("MI_OBJECT_ID"),
+        help="Object (principal) id of the managed identity associated with the GeoCatalog. "
+        "Required with --managed-identity-container-url. Or set MI_OBJECT_ID.",
+    )
     args = parser.parse_args()
 
     if not args.geocatalog_url:
         parser.error("--geocatalog-url is required (or set GEOCATALOG_URL).")
 
     geocatalog_url = args.geocatalog_url.rstrip("/")
+
+    # BYO-data mode: just register the managed-identity ingestion source, then exit.
+    if args.managed_identity_container_url:
+        if not args.managed_identity_object_id:
+            parser.error(
+                "--managed-identity-object-id is required with --managed-identity-container-url."
+            )
+        create_managed_identity_source(
+            geocatalog_url,
+            args.managed_identity_container_url,
+            args.managed_identity_object_id,
+        )
+        print("\nManaged-identity ingestion source ready. Upload your STAC items + assets to")
+        print("the container, then POST the items to the GeoCatalog Items API to ingest them.")
+        return 0
 
     collection_id = create_collection(geocatalog_url)
     register_source(geocatalog_url)

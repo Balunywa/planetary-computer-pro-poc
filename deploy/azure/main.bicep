@@ -22,10 +22,9 @@ targetScope = 'resourceGroup'
 ])
 param location string = 'westeurope'
 
-@description('Name of the Planetary Computer Pro GeoCatalog resource. Lowercase letters and numbers; must be unique within the region.')
-@minLength(3)
+@description('Name of the Planetary Computer Pro GeoCatalog resource. Lowercase letters and numbers, 3-24 characters. Leave blank to auto-generate a unique name.')
 @maxLength(24)
-param geoCatalogName string = 'pcpro${uniqueString(resourceGroup().id)}'
+param geoCatalogName string = ''
 
 @description('GeoCatalog service tier.')
 @allowed([
@@ -57,6 +56,10 @@ param artifactsBaseUrl string = 'https://raw.githubusercontent.com/Balunywa/plan
 // ------------------------------------------------------------------------------------
 
 var namePrefix = 'pcpro'
+// When no name is supplied (e.g. left blank in the portal form) generate a unique one
+// here in the template — uniqueString() is an ARM function and is not available in
+// createUiDefinition.json, so name generation must live in the template.
+var effectiveGeoCatalogName = empty(geoCatalogName) ? toLower('pcpro${uniqueString(resourceGroup().id)}') : geoCatalogName
 var vnetName = '${namePrefix}-vnet'
 var nsgName = '${namePrefix}-workstation-nsg'
 var bastionName = '${namePrefix}-bastion'
@@ -77,8 +80,16 @@ var networkNeeded = deployWorkstation
 // ------------------------------------------------------------------------------------
 
 resource geoCatalog 'Microsoft.Orbital/geoCatalogs@2026-04-15' = {
-  name: geoCatalogName
+  name: effectiveGeoCatalogName
   location: location
+  // Associate the ingestion managed identity so the managed-identity ingestion path
+  // (bring-your-own-data) works without a manual portal step.
+  identity: deploySampleStorage ? {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${ingestIdentity.id}': {}
+    }
+  } : null
   properties: {
     tier: geoCatalogTier
   }
@@ -278,14 +289,22 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
     parameters: [
       {
         name: 'GeoCatalogName'
-        value: geoCatalogName
+        value: effectiveGeoCatalogName
       }
       {
         name: 'ArtifactsBaseUrl'
         value: artifactsBaseUrl
       }
+      {
+        name: 'SampleContainerUrl'
+        value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : ''
+      }
+      {
+        name: 'IngestIdentityObjectId'
+        value: deploySampleStorage ? ingestIdentity.properties.principalId : ''
+      }
     ]
-    timeoutInSeconds: 2400
+    timeoutInSeconds: 1200
   }
 }
 
@@ -293,12 +312,14 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
 // Outputs
 // ------------------------------------------------------------------------------------
 
-output geoCatalogName string = geoCatalogName
+output geoCatalogName string = effectiveGeoCatalogName
 output geoCatalogResourceId string = geoCatalog.id
 @description('Open the GeoCatalog in the portal and copy the GeoCatalog URI from the Overview blade; use it as GEOCATALOG_URL for the ingest script and Explorer.')
-output geoCatalogPortalHint string = 'Portal → ${geoCatalogName} → Overview → GeoCatalog URI'
+output geoCatalogPortalHint string = 'Portal → ${effectiveGeoCatalogName} → Overview → GeoCatalog URI'
 output workstationName string = deployWorkstation ? workstationName : 'not-deployed'
 output bastionName string = networkNeeded ? bastionName : 'not-deployed'
 output sampleStorageAccount string = deploySampleStorage ? sampleStorageName : 'not-deployed'
 output sampleContainer string = deploySampleStorage ? sampleContainerName : 'not-deployed'
+output sampleContainerUrl string = deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : 'not-deployed'
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
+output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'

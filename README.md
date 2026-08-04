@@ -31,14 +31,54 @@ applies render + mosaic configuration so the collection is visible in the GeoCat
 Explorer. The optional storage account and managed identity support the alternative
 managed-identity ingestion path for your own data.
 
+This mirrors the Planetary Computer Pro reference architecture — public + private data
+flow into the GeoCatalog (the enterprise STAC catalog), which then feeds downstream apps
+and GeoAI models — using this POC's concrete components:
+
 ```mermaid
 flowchart LR
-  user([You]) -->|Bastion RDP tunnel| ws[Analytics workstation<br/>VS Code + Python + Azure CLI]
-  ws -->|STAC / ingestion APIs| gc[(GeoCatalog<br/>Microsoft.Orbital/geoCatalogs)]
-  pc[Public Planetary Computer<br/>Sentinel-2-l2a] -->|SAS-token ingestion source| gc
-  gc --> exp[GeoCatalog Explorer<br/>visualize]
-  store[(Sample-data storage<br/>+ managed identity)] -. BYO-data ingestion .-> gc
+  subgraph sources[Data sources]
+    pc[Public Planetary Computer<br/>Sentinel-2-l2a open data]
+    store[(Private data<br/>sample storage + BYO<br/>COGs / drone imagery)]
+  end
+
+  subgraph poc[This POC]
+    user([You]) -->|Bastion RDP tunnel| ws[Analytics workstation<br/>VS Code + Python + Azure CLI]
+    gc[(GeoCatalog — PC Pro<br/>Microsoft.Orbital/geoCatalogs<br/>enterprise STAC catalog)]
+  end
+
+  ws -->|STAC / ingestion APIs| gc
+  pc -->|SAS-token ingestion source| gc
+  store -. managed-identity ingestion source .-> gc
+
+  gc --> exp[Explorer<br/>visualize]
+  gc --> gis[ArcGIS Pro / QGIS<br/>3P apps]
+  gc --> app[Custom web apps<br/>STAC / Tiler / SAS APIs]
+  gc --> agents[Agents]
+
+  gc -->|Model inputs| foundry[[Azure AI Foundry<br/>GeoAI models]]
+  foundry -->|Model outputs ingested back| gc
 ```
+
+### Where Azure AI Foundry fits
+
+The Planetary Computer Pro docs call this out directly: you can *"integrate data in
+Planetary Computer Pro with Microsoft applications such as Fabric and Microsoft Foundry."*
+In the reference architecture, the GeoCatalog is the **geospatial data plane** and Azure AI
+Foundry is the **model plane**:
+
+- **Model inputs** — an application or agent queries the GeoCatalog's STAC/Tiler/SAS APIs
+  (authenticated with Microsoft Entra ID / managed identity) to pull imagery and metadata,
+  and passes it to a GeoAI model hosted in Foundry (discriminative models like land
+  classification and object detection, foundation models like Aurora for weather, or
+  reasoning/agentic workflows on Azure OpenAI).
+- **Model outputs** — the model's results (e.g., a land-cover raster or detected features)
+  are written back to Azure Blob Storage as STAC items and **ingested into the GeoCatalog**
+  through the same managed-identity ingestion path this POC sets up, so outputs become
+  first-class, searchable layers alongside the source imagery.
+
+This POC deploys the data plane (the GeoCatalog + ingestion) that a Foundry integration
+would build on; it does not deploy Foundry itself.
 
 ## Prerequisites: resource providers
 
@@ -76,8 +116,10 @@ the workstation, and select **Review + create**.
 
 [Visualize](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2FBalunywa%2Fplanetary-computer-pro-poc%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
 
-> A GeoCatalog deployment can take **10 or more minutes** (occasionally longer). The
-> deployment status may show "Created" before the resource is fully ready.
+> The GeoCatalog and Bastion provision in parallel; a typical deployment completes in
+> about **10–20 minutes** (the GeoCatalog is the long pole). The workstation software
+> install is capped at 20 minutes. The deployment status may show "Created" before the
+> GeoCatalog is fully ready.
 
 ## Deploy from the command line (optional)
 
@@ -97,7 +139,8 @@ az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
 ```
 
 The deployment outputs `geoCatalogName`, `geoCatalogResourceId`, `workstationName`,
-`bastionName`, `sampleStorageAccount`, `sampleContainer`, and `ingestIdentityClientId`.
+`bastionName`, `sampleStorageAccount`, `sampleContainer`, `sampleContainerUrl`,
+`ingestIdentityClientId`, and `ingestIdentityObjectId`.
 
 ## Grant yourself access to the GeoCatalog
 
@@ -143,13 +186,26 @@ machine that has `az login`, Python 3.10+, and the packages
 
 When you deploy the sample storage component, the template also creates a user-assigned
 managed identity (`pcpro-ingest-identity`) with **Storage Blob Data Reader** on the sample
-container. To ingest your own assets:
+container, and **associates it with the GeoCatalog** for you. To ingest your own assets:
 
 1. Upload your COGs / rasters and their STAC items to the `sample-assets` container in the
    deployed storage account.
-2. Assign the ingestion managed identity to the GeoCatalog and register a managed-identity
-   ingestion source pointing at the container. See
-   [Set up an ingestion source using managed identity](https://learn.microsoft.com/azure/planetary-computer/set-up-ingestion-credentials-managed-identity).
+2. Register the container as a managed-identity ingestion source. The workstation's
+   `connection-info.txt` has the ready-to-run command — it's the same script, in a
+   bring-your-own-data mode:
+
+   ```powershell
+   python "C:\Users\Public\Desktop\ingest_sample.py" `
+     --geocatalog-url "<GEOCATALOG_URI>" `
+     --managed-identity-container-url "<sampleContainerUrl>" `
+     --managed-identity-object-id "<ingestIdentityObjectId>"
+   ```
+
+   `sampleContainerUrl` and `ingestIdentityObjectId` are deployment outputs. The identity
+   is already assigned to the GeoCatalog and already holds Storage Blob Data Reader on the
+   container, so this single call is all that's needed. See
+   [Set up an ingestion source using managed identity](https://learn.microsoft.com/azure/planetary-computer/set-up-ingestion-credentials-managed-identity)
+   for the underlying API.
 3. Post your STAC items to the GeoCatalog Items API (the same pattern the sample uses).
 
 ## What's in this repo

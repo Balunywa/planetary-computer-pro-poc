@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "7368255102662711092"
+      "templateHash": "16077901749647107127"
     }
   },
   "parameters": {
@@ -25,11 +25,10 @@
     },
     "geoCatalogName": {
       "type": "string",
-      "defaultValue": "[format('pcpro{0}', uniqueString(resourceGroup().id))]",
-      "minLength": 3,
+      "defaultValue": "",
       "maxLength": 24,
       "metadata": {
-        "description": "Name of the Planetary Computer Pro GeoCatalog resource. Lowercase letters and numbers; must be unique within the region."
+        "description": "Name of the Planetary Computer Pro GeoCatalog resource. Lowercase letters and numbers, 3-24 characters. Leave blank to auto-generate a unique name."
       }
     },
     "geoCatalogTier": {
@@ -87,6 +86,7 @@
   },
   "variables": {
     "namePrefix": "pcpro",
+    "effectiveGeoCatalogName": "[if(empty(parameters('geoCatalogName')), toLower(format('pcpro{0}', uniqueString(resourceGroup().id))), parameters('geoCatalogName'))]",
     "vnetName": "[format('{0}-vnet', variables('namePrefix'))]",
     "nsgName": "[format('{0}-workstation-nsg', variables('namePrefix'))]",
     "bastionName": "[format('{0}-bastion', variables('namePrefix'))]",
@@ -103,11 +103,15 @@
     {
       "type": "Microsoft.Orbital/geoCatalogs",
       "apiVersion": "2026-04-15",
-      "name": "[parameters('geoCatalogName')]",
+      "name": "[variables('effectiveGeoCatalogName')]",
       "location": "[parameters('location')]",
+      "identity": "[if(parameters('deploySampleStorage'), createObject('type', 'UserAssigned', 'userAssignedIdentities', createObject(format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))), createObject())), null())]",
       "properties": {
         "tier": "[parameters('geoCatalogTier')]"
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]"
+      ]
     },
     {
       "condition": "[parameters('deploySampleStorage')]",
@@ -336,16 +340,26 @@
         "parameters": [
           {
             "name": "GeoCatalogName",
-            "value": "[parameters('geoCatalogName')]"
+            "value": "[variables('effectiveGeoCatalogName')]"
           },
           {
             "name": "ArtifactsBaseUrl",
             "value": "[parameters('artifactsBaseUrl')]"
+          },
+          {
+            "name": "SampleContainerUrl",
+            "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), '')]"
+          },
+          {
+            "name": "IngestIdentityObjectId",
+            "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, '')]"
           }
         ],
-        "timeoutInSeconds": 2400
+        "timeoutInSeconds": 1200
       },
       "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
         "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
       ]
     }
@@ -353,18 +367,18 @@
   "outputs": {
     "geoCatalogName": {
       "type": "string",
-      "value": "[parameters('geoCatalogName')]"
+      "value": "[variables('effectiveGeoCatalogName')]"
     },
     "geoCatalogResourceId": {
       "type": "string",
-      "value": "[resourceId('Microsoft.Orbital/geoCatalogs', parameters('geoCatalogName'))]"
+      "value": "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]"
     },
     "geoCatalogPortalHint": {
       "type": "string",
       "metadata": {
         "description": "Open the GeoCatalog in the portal and copy the GeoCatalog URI from the Overview blade; use it as GEOCATALOG_URL for the ingest script and Explorer."
       },
-      "value": "[format('Portal → {0} → Overview → GeoCatalog URI', parameters('geoCatalogName'))]"
+      "value": "[format('Portal → {0} → Overview → GeoCatalog URI', variables('effectiveGeoCatalogName'))]"
     },
     "workstationName": {
       "type": "string",
@@ -382,9 +396,17 @@
       "type": "string",
       "value": "[if(parameters('deploySampleStorage'), variables('sampleContainerName'), 'not-deployed')]"
     },
+    "sampleContainerUrl": {
+      "type": "string",
+      "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), 'not-deployed')]"
+    },
     "ingestIdentityClientId": {
       "type": "string",
       "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').clientId, 'not-deployed')]"
+    },
+    "ingestIdentityObjectId": {
+      "type": "string",
+      "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, 'not-deployed')]"
     }
   }
 }

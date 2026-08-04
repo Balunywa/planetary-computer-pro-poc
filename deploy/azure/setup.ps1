@@ -17,7 +17,13 @@ param(
     [string] $GeoCatalogName,
 
     [Parameter(Mandatory = $true)]
-    [string] $ArtifactsBaseUrl
+    [string] $ArtifactsBaseUrl,
+
+    [Parameter(Mandatory = $false)]
+    [string] $SampleContainerUrl = '',
+
+    [Parameter(Mandatory = $false)]
+    [string] $IngestIdentityObjectId = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -157,6 +163,13 @@ Next steps on this workstation:
   3. Run the end-to-end sample:
         python "$publicDesktop\ingest_sample.py" --geocatalog-url "<GEOCATALOG_URI>"
   4. Open the GeoCatalog Explorer (<GEOCATALOG_URI>/collections) to visualize the ingested imagery.
+
+Bring-your-own-data (managed-identity ingestion source):
+  Container URL     : $SampleContainerUrl
+  Identity objectId : $IngestIdentityObjectId
+  Register the container as a managed-identity ingestion source (then upload your
+  STAC items + assets to it and POST the items to the GeoCatalog Items API):
+        python "$publicDesktop\ingest_sample.py" --geocatalog-url "<GEOCATALOG_URI>" --managed-identity-container-url "$SampleContainerUrl" --managed-identity-object-id "$IngestIdentityObjectId"
 
 This file contains no passwords, keys, or tokens.
 "@

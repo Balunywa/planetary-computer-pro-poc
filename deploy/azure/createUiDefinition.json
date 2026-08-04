@@ -137,7 +137,7 @@
     ],
     "outputs": {
       "location": "[location()]",
-      "geoCatalogName": "[if(empty(basics('geoCatalogName')), concat('pcpro', take(uniqueString(subscription().subscriptionId, resourceGroup().id), 12)), basics('geoCatalogName'))]",
+      "geoCatalogName": "[basics('geoCatalogName')]",
       "deployWorkstation": "[steps('components').deployWorkstation]",
       "deploySampleStorage": "[steps('components').deploySampleStorage]",
       "adminUsername": "[if(steps('components').deployWorkstation, steps('workstationConfig').adminUsername, 'azureuser')]",
