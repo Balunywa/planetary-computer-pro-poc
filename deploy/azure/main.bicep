@@ -44,15 +44,16 @@ param seedSampleData bool = true
 @description('Deploy the StormLens web app (a branded showcase + live map explorer over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation.')
 param deployWebApp bool = true
 
-@description('Region for the StormLens Static Web App. Azure Static Web Apps is only offered in a few regions; the content is served globally from the CDN regardless of this value, so the default is safe for any deployment location.')
+@description('Optional override for the StormLens Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value.')
 @allowed([
+  ''
   'westus2'
   'centralus'
   'eastus2'
   'westeurope'
   'eastasia'
 ])
-param staticWebAppLocation string = 'eastus2'
+param staticWebAppLocation string = ''
 
 @description('Administrator username for the workstation VM.')
 param adminUsername string = 'azureuser'
@@ -152,6 +153,18 @@ var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
 
 // StormLens web app on Azure Static Web Apps.
 var staticWebAppName = 'pcpro-stormlens-${amlSuffix}'
+// Static Web Apps isn't offered in every region the rest of the stack supports, so when
+// no explicit override is given we co-locate it with the main deployment 'location' -
+// using the same region when SWA supports it (e.g. westeurope), otherwise the nearest
+// supported SWA region. Content is served globally from the CDN either way.
+var staticWebAppRegionForLocation = {
+  eastus: 'eastus2'
+  northcentralus: 'centralus'
+  westeurope: 'westeurope'
+  canadacentral: 'eastus2'
+  uksouth: 'westeurope'
+}
+var effectiveStaticWebAppLocation = empty(staticWebAppLocation) ? staticWebAppRegionForLocation[location] : staticWebAppLocation
 // Where setup.ps1 downloads the StormLens static files from (this POC repo's webapp folder).
 var webAppBaseUrl = '${artifactsBaseUrl}/webapp'
 
@@ -611,7 +624,7 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 // ------------------------------------------------------------------------------------
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
   name: staticWebAppName
-  location: staticWebAppLocation
+  location: effectiveStaticWebAppLocation
   identity: {
     type: 'SystemAssigned'
   }
@@ -650,3 +663,5 @@ output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.prop
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
 output webAppUrl string = deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : 'not-deployed'
 output webAppPrincipalId string = deployWebApp ? staticWebApp.identity.principalId : 'not-deployed'
+@description('Region the Static Web App was placed in. Co-located with the main deployment region when Static Web Apps supports it, otherwise the nearest supported region.')
+output webAppRegion string = deployWebApp ? effectiveStaticWebAppLocation : 'not-deployed'

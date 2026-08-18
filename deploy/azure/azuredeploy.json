@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "7218736881304744444"
+      "templateHash": "2897952050181712179"
     }
   },
   "parameters": {
@@ -71,8 +71,9 @@
     },
     "staticWebAppLocation": {
       "type": "string",
-      "defaultValue": "eastus2",
+      "defaultValue": "",
       "allowedValues": [
+        "",
         "westus2",
         "centralus",
         "eastus2",
@@ -80,7 +81,7 @@
         "eastasia"
       ],
       "metadata": {
-        "description": "Region for the StormLens Static Web App. Azure Static Web Apps is only offered in a few regions; the content is served globally from the CDN regardless of this value, so the default is safe for any deployment location."
+        "description": "Optional override for the StormLens Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value."
       }
     },
     "adminUsername": {
@@ -209,6 +210,14 @@
     "auroraDeploymentName": "aurora",
     "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]",
     "staticWebAppName": "[format('pcpro-stormlens-{0}', variables('amlSuffix'))]",
+    "staticWebAppRegionForLocation": {
+      "eastus": "eastus2",
+      "northcentralus": "centralus",
+      "westeurope": "westeurope",
+      "canadacentral": "eastus2",
+      "uksouth": "westeurope"
+    },
+    "effectiveStaticWebAppLocation": "[if(empty(parameters('staticWebAppLocation')), variables('staticWebAppRegionForLocation')[parameters('location')], parameters('staticWebAppLocation'))]",
     "webAppBaseUrl": "[format('{0}/webapp', parameters('artifactsBaseUrl'))]"
   },
   "resources": [
@@ -729,7 +738,7 @@
       "type": "Microsoft.Web/staticSites",
       "apiVersion": "2023-12-01",
       "name": "[variables('staticWebAppName')]",
-      "location": "[parameters('staticWebAppLocation')]",
+      "location": "[variables('effectiveStaticWebAppLocation')]",
       "identity": {
         "type": "SystemAssigned"
       },
@@ -817,6 +826,13 @@
     "webAppPrincipalId": {
       "type": "string",
       "value": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01', 'full').identity.principalId, 'not-deployed')]"
+    },
+    "webAppRegion": {
+      "type": "string",
+      "metadata": {
+        "description": "Region the Static Web App was placed in. Co-located with the main deployment region when Static Web Apps supports it, otherwise the nearest supported region."
+      },
+      "value": "[if(parameters('deployWebApp'), variables('effectiveStaticWebAppLocation'), 'not-deployed')]"
     }
   }
 }
