@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "2897952050181712179"
+      "templateHash": "16687747675739184610"
     }
   },
   "parameters": {
@@ -566,7 +566,7 @@
             "value": "[if(parameters('deployWebApp'), listSecrets(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').properties.apiKey, '')]"
           }
         ],
-        "timeoutInSeconds": 3600
+        "timeoutInSeconds": 7200
       },
       "dependsOn": [
         "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",

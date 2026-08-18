@@ -91,6 +91,62 @@ function Install-WithWinget {
 $hasWinget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
 
 # ------------------------------------------------------------------------------------
+# Static Web Apps publishing helpers (used for the early status page AND the final app).
+# ------------------------------------------------------------------------------------
+function Install-NodeIfMissing {
+    if (Get-Command npm -ErrorAction SilentlyContinue) { return }
+    Write-Log 'Installing Node.js LTS for the SWA CLI...'
+    if ($hasWinget) {
+        Install-WithWinget -Id 'OpenJS.NodeJS.LTS' -FriendlyName 'Node.js LTS'
+    }
+    else {
+        $nodeMsi = Join-Path $env:TEMP 'node-lts.msi'
+        Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.17.0/node-v20.17.0-x64.msi' -OutFile $nodeMsi
+        Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i `"$nodeMsi`" /quiet /norestart" -Wait
+    }
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
+function Invoke-SwaDeploy {
+    param([string] $Folder)
+    Install-NodeIfMissing
+    if (Get-Command npx -ErrorAction SilentlyContinue) {
+        # Run via npx so we don't depend on the global npm bin being on PATH this session.
+        & npx --yes @azure/static-web-apps-cli deploy "$Folder" --deployment-token $SwaDeploymentToken --env production 2>&1 |
+            ForEach-Object { Write-Log $_ }
+        return $true
+    }
+    Write-Log 'WARNING: Node/npx not available after install; cannot publish with the SWA CLI.'
+    return $false
+}
+
+# ------------------------------------------------------------------------------------
+# Early status page: as the very first thing, publish a branded "setting up" page to the
+# Static Web App so anyone who opens the URL immediately sees StormLens + live progress
+# (and roughly how long it takes) instead of the generic Azure placeholder. The real app
+# is published at the end of provisioning and transparently replaces this page.
+# ------------------------------------------------------------------------------------
+$webAppEarly = ($DeployWebApp -match '^(true|1|yes)$')
+if ($webAppEarly -and $SwaDeploymentToken -and $WebAppBaseUrl) {
+    try {
+        Write-Log 'Publishing the StormLens "setting up" status page to the Static Web App...'
+        $holdDir = Join-Path $env:TEMP 'stormlens-holding'
+        New-Item -ItemType Directory -Path $holdDir -Force | Out-Null
+        $holdBase = $WebAppBaseUrl.TrimEnd('/')
+        Invoke-WebRequest -Uri "$holdBase/deploying.html" -OutFile (Join-Path $holdDir 'index.html') -UseBasicParsing
+        # Minimal SWA config so every route serves the holding page while we build the real one.
+        '{ "navigationFallback": { "rewrite": "/index.html" } }' | Set-Content -Path (Join-Path $holdDir 'staticwebapp.config.json') -Encoding ascii
+        if ((Test-Path (Join-Path $holdDir 'index.html')) -and (Invoke-SwaDeploy $holdDir)) {
+            Write-Log 'Status page is live; users now see progress at the web app URL while the rest provisions.'
+        }
+    }
+    catch {
+        Write-Log "WARNING: could not publish the status page (non-fatal): $($_.Exception.Message)"
+    }
+}
+
+# ------------------------------------------------------------------------------------
 # Python 3.12
 # ------------------------------------------------------------------------------------
 try {
@@ -574,6 +630,7 @@ if ($webAppOn -and $WebAppBaseUrl) {
         New-Item -ItemType Directory -Path (Join-Path $stormLensDir 'assets') -Force | Out-Null
         $webFiles = @(
             'index.html', 'weather.html', 'explorer.html', 'architecture.html', 'get-started.html',
+            'deploying.html',
             'staticwebapp.config.json', 'StormLens-Setup.cmd', 'StormLens-Deploy.cmd',
             'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js',
             'setup/bootstrap.ps1', 'wizard/wizard.html', 'wizard/deploy-wizard.ps1'
@@ -616,32 +673,12 @@ python -m http.server 8080
         Write-Log "WARNING: StormLens local setup failed: $($_.Exception.Message)"
     }
 
-    # Publish to Azure Static Web Apps using the deployment token (best-effort).
+    # Publish to Azure Static Web Apps using the deployment token (best-effort). This
+    # replaces the early "setting up" status page with the finished StormLens app.
     if ($SwaDeploymentToken) {
         try {
             Write-Log 'Publishing StormLens to Azure Static Web Apps...'
-            if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-                Write-Log 'Installing Node.js LTS for the SWA CLI...'
-                if ($hasWinget) {
-                    Install-WithWinget -Id 'OpenJS.NodeJS.LTS' -FriendlyName 'Node.js LTS'
-                }
-                else {
-                    $nodeMsi = Join-Path $env:TEMP 'node-lts.msi'
-                    Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.17.0/node-v20.17.0-x64.msi' -OutFile $nodeMsi
-                    Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i `"$nodeMsi`" /quiet /norestart" -Wait
-                }
-                $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
-                            [System.Environment]::GetEnvironmentVariable('Path', 'User')
-            }
-            if (Get-Command npx -ErrorAction SilentlyContinue) {
-                # Run via npx so we don't depend on the global npm bin being on PATH this session.
-                & npx --yes @azure/static-web-apps-cli deploy "$stormLensDir" --deployment-token $SwaDeploymentToken --env production 2>&1 |
-                    ForEach-Object { Write-Log $_ }
-                Write-Log "StormLens published to $WebAppUrl"
-            }
-            else {
-                Write-Log 'WARNING: Node/npx not available after install; deploy StormLens manually with the SWA CLI.'
-            }
+            if (Invoke-SwaDeploy $stormLensDir) { Write-Log "StormLens published to $WebAppUrl" }
         }
         catch {
             Write-Log "WARNING: SWA publish failed (deploy manually with the SWA CLI): $($_.Exception.Message)"

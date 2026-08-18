@@ -478,7 +478,10 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         value: deployWebApp ? staticWebApp.listSecrets().properties.apiKey : ''
       }
     ]
-    timeoutInSeconds: 3600
+    // 2 hours: installs (Python/VS Code/Azure CLI/Node) + GeoCatalog seeding + the SWA
+    // publish can legitimately run 30-60+ min; a tight timeout was cutting the script off
+    // mid-way (leaving VS Code and the desktop shortcuts missing).
+    timeoutInSeconds: 7200
   }
   dependsOn: [
     geoCatalogSeederRole
