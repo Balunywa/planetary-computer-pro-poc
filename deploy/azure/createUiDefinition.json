@@ -6,7 +6,7 @@
     "config": {
       "isWizard": false,
       "basics": {
-        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus optional components: an analytics workstation (VS Code + Python over Azure Bastion), sample-data storage, an Azure OpenAI (Microsoft Foundry) agent, the Microsoft Aurora weather model on a GPU Foundry endpoint, and the branded **StormLens** web app (Azure Static Web App). The GeoCatalog is always deployed; choose the rest. [Learn more](https://github.com/Balunywa/planetary-computer-pro-poc).",
+        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus optional components: an analytics workstation (VS Code + Python over Azure Bastion), sample-data storage, an Azure OpenAI (Microsoft Foundry) agent, the Microsoft Aurora weather model on a GPU Foundry endpoint, and the official Microsoft Planetary Computer Pro **sample web app** (Azure Static Web App). The GeoCatalog is always deployed; choose the rest. [Learn more](https://github.com/Balunywa/planetary-computer-pro-poc).",
         "location": {
           "label": "Region",
           "toolTip": "GeoCatalog is available in these regions during Preview.",
@@ -86,9 +86,9 @@
                   "description": "Storage account and managed identity for the bring-your-own-data ingestion path."
                 },
                 {
-                  "label": "StormLens web app (Azure Static Web App)",
+                  "label": "Sample web app (Azure Static Web App)",
                   "value": "webApp",
-                  "description": "Branded showcase + live GeoCatalog map explorer, deployed to a Free-tier Azure Static Web App and served locally on the workstation. The workstation publishes the content, so select it too."
+                  "description": "The official Microsoft Planetary Computer Pro sample web app (MSAL sign-in + STAC browse + tile map over your GeoCatalog), built from the cloned repo and deployed to a Free-tier Azure Static Web App and served locally on the workstation. The workstation publishes the content, so select it too."
                 },
                 {
                   "label": "AI agent (Azure OpenAI / Foundry)",

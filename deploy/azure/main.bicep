@@ -41,10 +41,10 @@ param deploySampleStorage bool = true
 @description('At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation.')
 param seedSampleData bool = true
 
-@description('Deploy the StormLens web app (a branded showcase + live map explorer over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation.')
+@description('Build and deploy the official Microsoft Planetary Computer Pro sample web app (tools/javascript-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation.')
 param deployWebApp bool = true
 
-@description('Optional override for the StormLens Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value.')
+@description('Optional override for the sample web app Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value.')
 @allowed([
   ''
   'westus2'
@@ -151,8 +151,8 @@ var auroraDeploymentName = 'aurora'
 // quota + accepted marketplace terms); otherwise just the workspace + endpoint deploy.
 var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
 
-// StormLens web app on Azure Static Web Apps.
-var staticWebAppName = 'pcpro-stormlens-${amlSuffix}'
+// Planetary Computer Pro sample web app on Azure Static Web Apps.
+var staticWebAppName = 'pcpro-sample-${amlSuffix}'
 // Static Web Apps isn't offered in every region the rest of the stack supports, so when
 // no explicit override is given we co-locate it with the main deployment 'location' -
 // using the same region when SWA supports it (e.g. westeurope), otherwise the nearest
@@ -165,7 +165,8 @@ var staticWebAppRegionForLocation = {
   uksouth: 'westeurope'
 }
 var effectiveStaticWebAppLocation = empty(staticWebAppLocation) ? staticWebAppRegionForLocation[location] : staticWebAppLocation
-// Where setup.ps1 downloads the StormLens static files from (this POC repo's webapp folder).
+// Legacy: base URL under this POC repo. The setup script now builds the sample directly
+// from the cloned official repo, so this is retained only for backward compatibility.
 var webAppBaseUrl = '${artifactsBaseUrl}/webapp'
 
 // ------------------------------------------------------------------------------------
@@ -621,9 +622,10 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 }
 
 // ------------------------------------------------------------------------------------
-// Optional: StormLens web app on Azure Static Web Apps. The resource is created empty;
-// setup.ps1 publishes the static files with the deployment token (passed as a protected
-// run-command parameter) so the workstation never needs RBAC on this resource.
+// Optional: Planetary Computer Pro sample web app on Azure Static Web Apps. The resource
+// is created empty; setup.ps1 builds and publishes the static files with the deployment
+// token (passed as a protected run-command parameter) so the workstation never needs RBAC
+// on this resource.
 // ------------------------------------------------------------------------------------
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
   name: staticWebAppName

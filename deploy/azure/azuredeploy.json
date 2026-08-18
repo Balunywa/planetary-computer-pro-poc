@@ -66,7 +66,7 @@
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Deploy the StormLens web app (a branded showcase + live map explorer over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation."
+        "description": "Build and deploy the official Microsoft Planetary Computer Pro sample web app (tools/javascript-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation."
       }
     },
     "staticWebAppLocation": {
@@ -81,7 +81,7 @@
         "eastasia"
       ],
       "metadata": {
-        "description": "Optional override for the StormLens Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value."
+        "description": "Optional override for the sample web app Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value."
       }
     },
     "adminUsername": {
@@ -209,7 +209,7 @@
     "auroraEndpointName": "[format('aurora-{0}', variables('amlSuffix'))]",
     "auroraDeploymentName": "aurora",
     "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]",
-    "staticWebAppName": "[format('pcpro-stormlens-{0}', variables('amlSuffix'))]",
+    "staticWebAppName": "[format('pcpro-sample-{0}', variables('amlSuffix'))]",
     "staticWebAppRegionForLocation": {
       "eastus": "eastus2",
       "northcentralus": "centralus",

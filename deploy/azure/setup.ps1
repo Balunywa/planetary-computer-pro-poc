@@ -122,22 +122,50 @@ function Invoke-SwaDeploy {
 }
 
 # ------------------------------------------------------------------------------------
-# Early status page: as the very first thing, publish a branded "setting up" page to the
-# Static Web App so anyone who opens the URL immediately sees StormLens + live progress
-# (and roughly how long it takes) instead of the generic Azure placeholder. The real app
-# is published at the end of provisioning and transparently replaces this page.
+# Early status page: as the very first thing, publish a lightweight "setting up" page to
+# the Static Web App so anyone who opens the URL immediately sees that provisioning is in
+# progress instead of the generic Azure placeholder. The real sample app is built and
+# published at the end of provisioning and transparently replaces this page.
 # ------------------------------------------------------------------------------------
 $webAppEarly = ($DeployWebApp -match '^(true|1|yes)$')
-if ($webAppEarly -and $SwaDeploymentToken -and $WebAppBaseUrl) {
+if ($webAppEarly -and $SwaDeploymentToken) {
     try {
-        Write-Log 'Publishing the StormLens "setting up" status page to the Static Web App...'
-        $holdDir = Join-Path $env:TEMP 'stormlens-holding'
+        Write-Log 'Publishing the "setting up" status page to the Static Web App...'
+        $holdDir = Join-Path $env:TEMP 'pcpro-holding'
         New-Item -ItemType Directory -Path $holdDir -Force | Out-Null
-        $holdBase = $WebAppBaseUrl.TrimEnd('/')
-        Invoke-WebRequest -Uri "$holdBase/deploying.html" -OutFile (Join-Path $holdDir 'index.html') -UseBasicParsing
+        $holdingHtml = @'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="60">
+  <title>Setting up your Planetary Computer Pro sample app…</title>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0b1a2b; color: #eaf2fb;
+           display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; }
+    .card { max-width: 560px; padding: 40px; text-align: center; }
+    h1 { font-weight: 600; font-size: 1.4rem; }
+    p { color: #a9c1de; line-height: 1.5; }
+    .spinner { width: 44px; height: 44px; margin: 0 auto 24px; border: 4px solid #24405f;
+               border-top-color: #4aa8ff; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <h1>Setting up your Planetary Computer Pro sample web app…</h1>
+    <p>Provisioning is in progress. This page refreshes automatically and will be replaced by
+       the sample app once the build finishes (typically a few minutes).</p>
+  </div>
+</body>
+</html>
+'@
+        Set-Content -Path (Join-Path $holdDir 'index.html') -Value $holdingHtml -Encoding utf8
         # Minimal SWA config so every route serves the holding page while we build the real one.
         '{ "navigationFallback": { "rewrite": "/index.html" } }' | Set-Content -Path (Join-Path $holdDir 'staticwebapp.config.json') -Encoding ascii
-        if ((Test-Path (Join-Path $holdDir 'index.html')) -and (Invoke-SwaDeploy $holdDir)) {
+        if (Invoke-SwaDeploy $holdDir) {
             Write-Log 'Status page is live; users now see progress at the web app URL while the rest provisions.'
         }
     }
@@ -618,100 +646,37 @@ else {
 }
 
 # ------------------------------------------------------------------------------------
-# StormLens web app: download the static site, inject the real GeoCatalog URL, serve it
-# locally on the workstation, and (if a Static Web Apps deployment token was passed as a
-# protected parameter) publish it to Azure Static Web Apps. All best-effort.
+# Official Planetary Computer Pro sample web app: build the Microsoft sample that ships in
+# the cloned repo (tools/javascript-sample), inject the real GeoCatalog URL + an Entra
+# sign-in app registration via its .env.local, serve the built site locally on the
+# workstation, and (if a Static Web Apps deployment token was passed as a protected
+# parameter) publish it to Azure Static Web Apps. All best-effort.
 # ------------------------------------------------------------------------------------
 $webAppOn = ($DeployWebApp -match '^(true|1|yes)$')
-$stormLensDir = 'C:\StormLens\webapp'
-if ($webAppOn -and $WebAppBaseUrl) {
-    try {
-        Write-Log 'Setting up the StormLens web app...'
-        New-Item -ItemType Directory -Path (Join-Path $stormLensDir 'assets') -Force | Out-Null
-        $webFiles = @(
-            'index.html', 'weather.html', 'explorer.html', 'architecture.html', 'get-started.html',
-            'deploying.html',
-            'staticwebapp.config.json', 'StormLens-Setup.cmd', 'StormLens-Deploy.cmd',
-            'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js',
-            'setup/bootstrap.ps1', 'wizard/wizard.html', 'wizard/deploy-wizard.ps1'
-        )
-        $base = $WebAppBaseUrl.TrimEnd('/')
-        foreach ($rel in $webFiles) {
-            $dest = Join-Path $stormLensDir ($rel -replace '/', '\')
-            New-Item -ItemType Directory -Path (Split-Path $dest -Parent) -Force | Out-Null
-            try {
-                Invoke-WebRequest -Uri "$base/$rel" -OutFile $dest -UseBasicParsing
-            }
-            catch {
-                Write-Log "WARNING: could not download web file '$rel': $($_.Exception.Message)"
-            }
-        }
-
-        # Inject the real GeoCatalog URL into the runtime config (no secrets written).
-        # Literal replace (not regex) so URL characters are never treated as substitutions;
-        # only inject when we actually have a real URI, otherwise leave it blank.
-        $cfgPath = Join-Path $stormLensDir 'assets\app-config.js'
-        if ((Test-Path $cfgPath) -and $GeoCatalogUri) {
-            $cfg = Get-Content -Raw $cfgPath
-            $cfg = $cfg.Replace('geoCatalogUrl: ""', ('geoCatalogUrl: "' + $geocatUri + '"'))
-            Set-Content -Path $cfgPath -Value $cfg -Encoding UTF8
-            Write-Log 'Injected GeoCatalog URL into StormLens app-config.js.'
-        }
-
-        # Desktop launcher to serve the site locally.
-        $serveCmd = @"
-@echo off
-echo Starting StormLens at http://localhost:8080 ...
-start "" http://localhost:8080
-cd /d "$stormLensDir"
-python -m http.server 8080
-"@
-        Set-Content -Path (Join-Path $publicDesktop '2 - StormLens (local).cmd') -Value $serveCmd -Encoding ascii
-        Write-Log 'Wrote local StormLens launcher to the public desktop.'
-    }
-    catch {
-        Write-Log "WARNING: StormLens local setup failed: $($_.Exception.Message)"
-    }
-
-    # Publish to Azure Static Web Apps using the deployment token (best-effort). This
-    # replaces the early "setting up" status page with the finished StormLens app.
-    if ($SwaDeploymentToken) {
-        try {
-            Write-Log 'Publishing StormLens to Azure Static Web Apps...'
-            if (Invoke-SwaDeploy $stormLensDir) { Write-Log "StormLens published to $WebAppUrl" }
-        }
-        catch {
-            Write-Log "WARNING: SWA publish failed (deploy manually with the SWA CLI): $($_.Exception.Message)"
-        }
-    }
-}
-
-# ------------------------------------------------------------------------------------
-# StormLens sign-in: create a Microsoft Entra app registration (SPA) for the Live
-# Explorer's MSAL sign-in, wire its redirect URIs + delegated GeoCatalog permission, and
-# inject the clientId/tenantId into app-config.js. Best-effort and fully non-fatal: it
-# only succeeds if the workstation identity (or a signed-in deployer) has directory rights
-# to create app registrations. Otherwise it logs a note and leaves the IDs blank for the
-# operator to fill in manually.
-# ------------------------------------------------------------------------------------
+$sampleDir = Join-Path $repoDir 'tools\javascript-sample'
+$sampleDistDir = Join-Path $sampleDir 'dist'
 $entraConfigured = $false
 $explorerClientId = ''
 $explorerTenantId = ''
-if ($webAppOn) {
+if ($webAppOn -and (Test-Path $sampleDir)) {
+
+    # --- Entra app registration (SPA) for the sample's MSAL sign-in. Best-effort and
+    #     non-fatal: only succeeds if the workstation identity has directory rights. ---
     try {
         if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw 'Azure CLI not available.' }
-        Write-Log 'Creating the Microsoft Entra app registration for StormLens sign-in...'
+        Write-Log 'Creating the Microsoft Entra app registration for the sample web app sign-in...'
 
         # Authenticate az with the workstation managed identity (best-effort).
         & az login --identity --allow-no-subscriptions 2>&1 | ForEach-Object { Write-Log $_ }
         $explorerTenantId = (& az account show --query tenantId -o tsv 2>$null)
 
-        # SPA redirect URIs: local launcher + the Static Web App (if one was deployed).
-        $redirects = @('http://localhost:8080/explorer.html')
-        if ($WebAppUrl) { $redirects += ($WebAppUrl.TrimEnd('/') + '/explorer.html') }
+        # SPA redirect URIs: local launcher root + the Static Web App root (if deployed).
+        # The sample is a single page served at '/', so redirects target the root.
+        $redirects = @('http://localhost:8080/')
+        if ($WebAppUrl) { $redirects += ($WebAppUrl.TrimEnd('/') + '/') }
 
         # Create the app registration, or reuse one with the same name (idempotent re-runs).
-        $appName = "StormLens-Explorer-$GeoCatalogName"
+        $appName = "PCPro-Sample-$GeoCatalogName"
         $explorerClientId = (& az ad app list --display-name $appName --query "[0].appId" -o tsv 2>$null)
         if ($explorerClientId) {
             Write-Log "Reusing existing app registration $explorerClientId."
@@ -724,7 +689,7 @@ if ($webAppOn) {
         if ($explorerClientId) {
             # Set the SPA platform redirect URIs via Microsoft Graph (no --spa flag on az).
             $spaBody = (@{ spa = @{ redirectUris = $redirects } } | ConvertTo-Json -Compress -Depth 5)
-            $spaBodyFile = Join-Path $env:TEMP 'stormlens-spa.json'
+            $spaBodyFile = Join-Path $env:TEMP 'pcpro-sample-spa.json'
             Set-Content -Path $spaBodyFile -Value $spaBody -Encoding utf8
             & az rest --method PATCH `
                 --url "https://graph.microsoft.com/v1.0/applications(appId='$explorerClientId')" `
@@ -750,30 +715,108 @@ if ($webAppOn) {
             catch {
                 Write-Log "NOTE: could not pre-wire the GeoCatalog permission (users can consent at sign-in): $($_.Exception.Message)"
             }
-
-            # Inject clientId/tenantId into the runtime config (literal replace; no secrets).
-            $cfgPath = Join-Path $stormLensDir 'assets\app-config.js'
-            if ((Test-Path $cfgPath) -and $explorerClientId -and $explorerTenantId) {
-                $cfg = Get-Content -Raw $cfgPath
-                $cfg = $cfg.Replace('clientId: ""', ('clientId: "' + $explorerClientId + '"'))
-                $cfg = $cfg.Replace('tenantId: ""', ('tenantId: "' + $explorerTenantId + '"'))
-                Set-Content -Path $cfgPath -Value $cfg -Encoding UTF8
-                $entraConfigured = $true
-                Write-Log 'Injected Entra clientId/tenantId into StormLens app-config.js.'
-
-                # Re-publish to Static Web Apps so the live site picks up the sign-in config.
-                if ($SwaDeploymentToken -and (Get-Command npx -ErrorAction SilentlyContinue)) {
-                    & npx --yes @azure/static-web-apps-cli deploy "$stormLensDir" `
-                        --deployment-token $SwaDeploymentToken --env production 2>&1 | ForEach-Object { Write-Log $_ }
-                }
-            }
         }
         else {
-            Write-Log 'WARNING: could not create the Entra app registration (the workstation identity likely lacks Application.ReadWrite.All). Set clientId/tenantId manually in app-config.js.'
+            Write-Log 'WARNING: could not create the Entra app registration (the workstation identity likely lacks Application.ReadWrite.All). Set VITE_ENTRA_* manually in the sample .env.local.'
         }
     }
     catch {
-        Write-Log "WARNING: Entra app-registration step failed (set clientId/tenantId manually in app-config.js): $($_.Exception.Message)"
+        Write-Log "WARNING: Entra app-registration step failed (set VITE_ENTRA_* manually in the sample .env.local): $($_.Exception.Message)"
+    }
+
+    # --- Build-time config. Vite bakes VITE_* into the bundle at build, so .env.local must
+    #     exist BEFORE npm run build. No secrets are written (only the public catalog URL
+    #     and the app-registration IDs). ---
+    try {
+        $envLines = @(
+            "VITE_GEOCATALOG_URL=$geocatUri",
+            "VITE_ENTRA_TENANT_ID=$explorerTenantId",
+            "VITE_ENTRA_CLIENT_ID=$explorerClientId",
+            'VITE_GEOCATALOG_API_VERSION=2025-04-30-preview',
+            'VITE_DEV_PORT=5173'
+        )
+        Set-Content -Path (Join-Path $sampleDir '.env.local') -Value ($envLines -join "`r`n") -Encoding ascii
+        if ($explorerClientId -and $explorerTenantId) {
+            $entraConfigured = $true
+            Write-Log 'Wrote sample .env.local with GeoCatalog URL + Entra sign-in IDs.'
+        }
+        else {
+            Write-Log 'Wrote sample .env.local with GeoCatalog URL (Entra IDs left blank for manual entry).'
+        }
+    }
+    catch {
+        Write-Log "WARNING: could not write the sample .env.local: $($_.Exception.Message)"
+    }
+
+    # --- Ensure the build targets es2022. Vite's default target list includes safari14,
+    #     which makes esbuild apply a destructuring workaround that fails on maplibre-gl's
+    #     minified bundle. Overwriting vite.config.js with an es2022 target guarantees a
+    #     clean build regardless of upstream drift. ---
+    try {
+        $viteConfig = @'
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.VITE_DEV_PORT) || 5173,
+    open: true,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
+  },
+  esbuild: { target: 'es2022' },
+  optimizeDeps: { esbuildOptions: { target: 'es2022' } },
+  build: { target: 'es2022' },
+});
+'@
+        Set-Content -Path (Join-Path $sampleDir 'vite.config.js') -Value $viteConfig -Encoding ascii
+    }
+    catch {
+        Write-Log "WARNING: could not write the sample vite.config.js: $($_.Exception.Message)"
+    }
+
+    # --- Build the sample (npm install + npm run build -> dist/). Best-effort. ---
+    try {
+        Install-NodeIfMissing
+        Push-Location $sampleDir
+        Write-Log 'Installing sample web app dependencies (npm install)...'
+        & npm install 2>&1 | ForEach-Object { Write-Log $_ }
+        Write-Log 'Building the sample web app (npm run build)...'
+        & npm run build 2>&1 | ForEach-Object { Write-Log $_ }
+        Pop-Location
+        if (Test-Path $sampleDistDir) { Write-Log "Sample web app built to $sampleDistDir." }
+        else { Write-Log 'WARNING: sample build did not produce a dist/ folder.' }
+    }
+    catch {
+        Pop-Location -ErrorAction SilentlyContinue
+        Write-Log "WARNING: sample web app build failed: $($_.Exception.Message)"
+    }
+
+    # --- Desktop launcher to serve the built site locally on port 8080. ---
+    try {
+        $serveCmd = @"
+@echo off
+echo Starting the Planetary Computer Pro sample web app at http://localhost:8080 ...
+start "" http://localhost:8080
+cd /d "$sampleDistDir"
+python -m http.server 8080
+"@
+        Set-Content -Path (Join-Path $publicDesktop '2 - Sample Web App (local).cmd') -Value $serveCmd -Encoding ascii
+        Write-Log 'Wrote local sample-web-app launcher to the public desktop.'
+    }
+    catch {
+        Write-Log "WARNING: could not write the local launcher: $($_.Exception.Message)"
+    }
+
+    # --- Publish the built site to Azure Static Web Apps (best-effort). This replaces the
+    #     early "setting up" status page with the finished sample app. ---
+    if ($SwaDeploymentToken -and (Test-Path $sampleDistDir)) {
+        try {
+            Write-Log 'Publishing the sample web app to Azure Static Web Apps...'
+            if (Invoke-SwaDeploy $sampleDistDir) { Write-Log "Sample web app published to $WebAppUrl" }
+        }
+        catch {
+            Write-Log "WARNING: SWA publish failed (deploy manually with the SWA CLI): $($_.Exception.Message)"
+        }
     }
 }
 
@@ -842,22 +885,22 @@ AI (Microsoft Foundry):
   (also set as machine env vars FOUNDRY_ENDPOINT / FOUNDRY_DEPLOYMENT)
   Aurora GPU endpoint     : $AuroraEndpoint
 
-StormLens web app (branded showcase + live map explorer over the GeoCatalog):
+Planetary Computer Pro sample web app (official Microsoft javascript-sample):
   Azure Static Web Apps URL : $WebAppUrl
-  Run locally               : double-click "2 - StormLens (local).cmd" (serves
-                              http://localhost:8080 from $stormLensDir)
+  Run locally               : double-click "2 - Sample Web App (local).cmd" (serves
+                              http://localhost:8080 from $sampleDistDir)
   Sign-in ($(if ($entraConfigured) { 'auto-configured' } else { 'action needed' }))     : $(if ($entraConfigured) {
-      "Entra app '$('StormLens-Explorer-' + $GeoCatalogName)' (clientId $explorerClientId)
-                              was created and written into app-config.js. If the first sign-in
-                              shows a consent error, have an admin grant consent to the
+      "Entra app '$('PCPro-Sample-' + $GeoCatalogName)' (clientId $explorerClientId)
+                              was created and baked into the build via .env.local. If the first
+                              sign-in shows a consent error, have an admin grant consent to the
                               GeoCatalog (user_impersonation) delegated permission."
     } else {
       "the Entra app registration could not be created automatically. Create a
                               Microsoft Entra app (SPA, redirect URIs
-                              http://localhost:8080/explorer.html and <SWA-URL>/explorer.html,
-                              delegated GeoCatalog access) and paste its clientId/tenantId into
-                              $stormLensDir\assets\app-config.js (the GeoCatalog URL is already
-                              injected)."
+                              http://localhost:8080/ and <SWA-URL>/, delegated GeoCatalog
+                              access), set VITE_ENTRA_TENANT_ID / VITE_ENTRA_CLIENT_ID in
+                              $sampleDir\.env.local, then rebuild with 'npm run build' (the
+                              GeoCatalog URL is already set)."
     })
 
 This file contains no passwords, keys, or tokens.
@@ -942,15 +985,16 @@ same pipeline the weather workflow uses to publish its results.
 Open **[notebooks/create-stac-items.ipynb](notebooks/create-stac-items.ipynb)** to turn
 your own GeoTIFFs into STAC items and ingest them.
 
-## 5. Explore in StormLens (branded web app)
-Instead of the raw catalog portal, use the **StormLens** web app — a branded showcase plus a
-live map explorer over your GeoCatalog. Run it locally by double-clicking the desktop
-launcher **"2 - StormLens (local).cmd"** (serves `http://localhost:8080`), or open the
-**Azure Static Web Apps** URL from `connection-info.txt`. The Live Explorer signs in with
-your Microsoft Entra identity; the deployment tries to **auto-create the app registration**
-and fill in `clientId`/`tenantId` for you. If sign-in reports a config or consent error, see
-the StormLens section of `connection-info.txt` (you may need an admin to grant consent, or to
-set the IDs manually in `C:\StormLens\webapp\assets\app-config.js`).
+## 5. Explore in the sample web app
+Instead of the raw catalog portal, use the official Microsoft **Planetary Computer Pro
+sample web app** (the `tools/javascript-sample` that ships in this repo) — a MSAL sign-in +
+STAC browse + tile map over your GeoCatalog. Run it locally by double-clicking the desktop
+launcher **"2 - Sample Web App (local).cmd"** (serves `http://localhost:8080`), or open the
+**Azure Static Web Apps** URL from `connection-info.txt`. It signs in with your Microsoft
+Entra identity; the deployment tries to **auto-create the app registration** and bake
+`VITE_ENTRA_CLIENT_ID`/`VITE_ENTRA_TENANT_ID` into the build for you. If sign-in reports a
+config or consent error, see the sample-web-app section of `connection-info.txt` (you may
+need an admin to grant consent, or to set the IDs in the sample `.env.local` and rebuild).
 
 ---
 
