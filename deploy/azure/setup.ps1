@@ -588,10 +588,12 @@ if ($webAppOn -and $WebAppBaseUrl) {
         }
 
         # Inject the real GeoCatalog URL into the runtime config (no secrets written).
+        # Literal replace (not regex) so URL characters are never treated as substitutions;
+        # only inject when we actually have a real URI, otherwise leave it blank.
         $cfgPath = Join-Path $stormLensDir 'assets\app-config.js'
-        if (Test-Path $cfgPath) {
+        if ((Test-Path $cfgPath) -and $GeoCatalogUri) {
             $cfg = Get-Content -Raw $cfgPath
-            $cfg = $cfg -replace 'geoCatalogUrl:\s*"[^"]*"', ('geoCatalogUrl: "' + $geocatUri + '"')
+            $cfg = $cfg.Replace('geoCatalogUrl: ""', ('geoCatalogUrl: "' + $geocatUri + '"'))
             Set-Content -Path $cfgPath -Value $cfg -Encoding UTF8
             Write-Log 'Injected GeoCatalog URL into StormLens app-config.js.'
         }
@@ -615,22 +617,123 @@ python -m http.server 8080
     if ($SwaDeploymentToken) {
         try {
             Write-Log 'Publishing StormLens to Azure Static Web Apps...'
-            $npm = Get-Command npm -ErrorAction SilentlyContinue
-            if (-not $npm) {
+            if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
                 Write-Log 'Installing Node.js LTS for the SWA CLI...'
-                & winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 |
-                    ForEach-Object { Write-Log $_ }
+                if ($hasWinget) {
+                    Install-WithWinget -Id 'OpenJS.NodeJS.LTS' -FriendlyName 'Node.js LTS'
+                }
+                else {
+                    $nodeMsi = Join-Path $env:TEMP 'node-lts.msi'
+                    Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.17.0/node-v20.17.0-x64.msi' -OutFile $nodeMsi
+                    Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i `"$nodeMsi`" /quiet /norestart" -Wait
+                }
                 $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
                             [System.Environment]::GetEnvironmentVariable('Path', 'User')
             }
-            & npm install -g @azure/static-web-apps-cli 2>&1 | ForEach-Object { Write-Log $_ }
-            & swa deploy "$stormLensDir" --deployment-token $SwaDeploymentToken --env production 2>&1 |
-                ForEach-Object { Write-Log $_ }
-            Write-Log "StormLens published to $WebAppUrl"
+            if (Get-Command npx -ErrorAction SilentlyContinue) {
+                # Run via npx so we don't depend on the global npm bin being on PATH this session.
+                & npx --yes @azure/static-web-apps-cli deploy "$stormLensDir" --deployment-token $SwaDeploymentToken --env production 2>&1 |
+                    ForEach-Object { Write-Log $_ }
+                Write-Log "StormLens published to $WebAppUrl"
+            }
+            else {
+                Write-Log 'WARNING: Node/npx not available after install; deploy StormLens manually with the SWA CLI.'
+            }
         }
         catch {
             Write-Log "WARNING: SWA publish failed (deploy manually with the SWA CLI): $($_.Exception.Message)"
         }
+    }
+}
+
+# ------------------------------------------------------------------------------------
+# StormLens sign-in: create a Microsoft Entra app registration (SPA) for the Live
+# Explorer's MSAL sign-in, wire its redirect URIs + delegated GeoCatalog permission, and
+# inject the clientId/tenantId into app-config.js. Best-effort and fully non-fatal: it
+# only succeeds if the workstation identity (or a signed-in deployer) has directory rights
+# to create app registrations. Otherwise it logs a note and leaves the IDs blank for the
+# operator to fill in manually.
+# ------------------------------------------------------------------------------------
+$entraConfigured = $false
+$explorerClientId = ''
+$explorerTenantId = ''
+if ($webAppOn) {
+    try {
+        if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw 'Azure CLI not available.' }
+        Write-Log 'Creating the Microsoft Entra app registration for StormLens sign-in...'
+
+        # Authenticate az with the workstation managed identity (best-effort).
+        & az login --identity --allow-no-subscriptions 2>&1 | ForEach-Object { Write-Log $_ }
+        $explorerTenantId = (& az account show --query tenantId -o tsv 2>$null)
+
+        # SPA redirect URIs: local launcher + the Static Web App (if one was deployed).
+        $redirects = @('http://localhost:8080/explorer.html')
+        if ($WebAppUrl) { $redirects += ($WebAppUrl.TrimEnd('/') + '/explorer.html') }
+
+        # Create the app registration, or reuse one with the same name (idempotent re-runs).
+        $appName = "StormLens-Explorer-$GeoCatalogName"
+        $explorerClientId = (& az ad app list --display-name $appName --query "[0].appId" -o tsv 2>$null)
+        if ($explorerClientId) {
+            Write-Log "Reusing existing app registration $explorerClientId."
+        }
+        else {
+            $explorerClientId = (& az ad app create --display-name $appName --sign-in-audience AzureADMyOrg --query appId -o tsv 2>$null)
+            if ($explorerClientId) { Write-Log "Created app registration $explorerClientId." }
+        }
+
+        if ($explorerClientId) {
+            # Set the SPA platform redirect URIs via Microsoft Graph (no --spa flag on az).
+            $spaBody = (@{ spa = @{ redirectUris = $redirects } } | ConvertTo-Json -Compress -Depth 5)
+            $spaBodyFile = Join-Path $env:TEMP 'stormlens-spa.json'
+            Set-Content -Path $spaBodyFile -Value $spaBody -Encoding utf8
+            & az rest --method PATCH `
+                --url "https://graph.microsoft.com/v1.0/applications(appId='$explorerClientId')" `
+                --headers 'Content-Type=application/json' --body "@$spaBodyFile" 2>&1 | ForEach-Object { Write-Log $_ }
+            Remove-Item $spaBodyFile -ErrorAction SilentlyContinue
+
+            # Add the delegated GeoCatalog permission (user_impersonation) and try to consent.
+            try {
+                $resourceSp = (& az ad sp show --id 'https://geocatalog.spatio.azure.com' -o json 2>$null) | ConvertFrom-Json
+                if ($resourceSp -and $resourceSp.appId) {
+                    $imp = $resourceSp.oauth2PermissionScopes | Where-Object { $_.value -eq 'user_impersonation' } | Select-Object -First 1
+                    if ($imp) {
+                        & az ad app permission add --id $explorerClientId --api $resourceSp.appId `
+                            --api-permissions "$($imp.id)=Scope" 2>&1 | ForEach-Object { Write-Log $_ }
+                        # Admin consent needs privileged rights; best-effort, users can consent at sign-in.
+                        & az ad app permission admin-consent --id $explorerClientId 2>&1 | ForEach-Object { Write-Log $_ }
+                    }
+                }
+                else {
+                    Write-Log 'NOTE: GeoCatalog service principal not found in this tenant; users will consent to the data-plane scope at first sign-in.'
+                }
+            }
+            catch {
+                Write-Log "NOTE: could not pre-wire the GeoCatalog permission (users can consent at sign-in): $($_.Exception.Message)"
+            }
+
+            # Inject clientId/tenantId into the runtime config (literal replace; no secrets).
+            $cfgPath = Join-Path $stormLensDir 'assets\app-config.js'
+            if ((Test-Path $cfgPath) -and $explorerClientId -and $explorerTenantId) {
+                $cfg = Get-Content -Raw $cfgPath
+                $cfg = $cfg.Replace('clientId: ""', ('clientId: "' + $explorerClientId + '"'))
+                $cfg = $cfg.Replace('tenantId: ""', ('tenantId: "' + $explorerTenantId + '"'))
+                Set-Content -Path $cfgPath -Value $cfg -Encoding UTF8
+                $entraConfigured = $true
+                Write-Log 'Injected Entra clientId/tenantId into StormLens app-config.js.'
+
+                # Re-publish to Static Web Apps so the live site picks up the sign-in config.
+                if ($SwaDeploymentToken -and (Get-Command npx -ErrorAction SilentlyContinue)) {
+                    & npx --yes @azure/static-web-apps-cli deploy "$stormLensDir" `
+                        --deployment-token $SwaDeploymentToken --env production 2>&1 | ForEach-Object { Write-Log $_ }
+                }
+            }
+        }
+        else {
+            Write-Log 'WARNING: could not create the Entra app registration (the workstation identity likely lacks Application.ReadWrite.All). Set clientId/tenantId manually in app-config.js.'
+        }
+    }
+    catch {
+        Write-Log "WARNING: Entra app-registration step failed (set clientId/tenantId manually in app-config.js): $($_.Exception.Message)"
     }
 }
 
@@ -703,10 +806,19 @@ StormLens web app (branded showcase + live map explorer over the GeoCatalog):
   Azure Static Web Apps URL : $WebAppUrl
   Run locally               : double-click "2 - StormLens (local).cmd" (serves
                               http://localhost:8080 from $stormLensDir)
-  Sign-in note              : the Live Explorer uses Microsoft Entra (MSAL); set the
-                              app-registration clientId/tenantId in
-                              $stormLensDir\assets\app-config.js (GeoCatalog URL is
-                              already injected).
+  Sign-in ($(if ($entraConfigured) { 'auto-configured' } else { 'action needed' }))     : $(if ($entraConfigured) {
+      "Entra app '$('StormLens-Explorer-' + $GeoCatalogName)' (clientId $explorerClientId)
+                              was created and written into app-config.js. If the first sign-in
+                              shows a consent error, have an admin grant consent to the
+                              GeoCatalog (user_impersonation) delegated permission."
+    } else {
+      "the Entra app registration could not be created automatically. Create a
+                              Microsoft Entra app (SPA, redirect URIs
+                              http://localhost:8080/explorer.html and <SWA-URL>/explorer.html,
+                              delegated GeoCatalog access) and paste its clientId/tenantId into
+                              $stormLensDir\assets\app-config.js (the GeoCatalog URL is already
+                              injected)."
+    })
 
 This file contains no passwords, keys, or tokens.
 "@
@@ -795,8 +907,10 @@ Instead of the raw catalog portal, use the **StormLens** web app — a branded s
 live map explorer over your GeoCatalog. Run it locally by double-clicking the desktop
 launcher **"2 - StormLens (local).cmd"** (serves `http://localhost:8080`), or open the
 **Azure Static Web Apps** URL from `connection-info.txt`. The Live Explorer signs in with
-your Microsoft Entra identity; set the app-registration `clientId`/`tenantId` in
-`C:\StormLens\webapp\assets\app-config.js` (the GeoCatalog URL is already filled in).
+your Microsoft Entra identity; the deployment tries to **auto-create the app registration**
+and fill in `clientId`/`tenantId` for you. If sign-in reports a config or consent error, see
+the StormLens section of `connection-info.txt` (you may need an admin to grant consent, or to
+set the IDs manually in `C:\StormLens\webapp\assets\app-config.js`).
 
 ---
 

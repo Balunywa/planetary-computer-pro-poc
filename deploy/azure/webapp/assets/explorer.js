@@ -59,6 +59,17 @@
 
   function emptyFC() { return { type: "FeatureCollection", features: [] }; }
 
+  // Safely update the footprints source even if the map's style/source isn't ready yet
+  // (e.g. the user signs in before the map "load" event fires).
+  function setFootprints(fc) {
+    var src = map.getSource("footprints");
+    if (src) { src.setData(fc); return; }
+    map.once("load", function () {
+      var s = map.getSource("footprints");
+      if (s) s.setData(fc);
+    });
+  }
+
   // --- MSAL auth ---------------------------------------------------------------------
   var msalApp = null;
   var account = null;
@@ -115,7 +126,7 @@
     collectionSelect.innerHTML = '<option value="">— sign in to load —</option>';
     itemList.innerHTML = "";
     itemCount.textContent = "";
-    map.getSource("footprints") && map.getSource("footprints").setData(emptyFC());
+    setFootprints(emptyFC());
   }
 
   async function getToken() {
@@ -169,7 +180,7 @@
       var data = await stacGet("/stac/collections/" + encodeURIComponent(collectionId) + "/items?limit=50");
       var feats = (data && data.features) || [];
       var fc = { type: "FeatureCollection", features: feats.filter(function (f) { return f.geometry; }) };
-      map.getSource("footprints").setData(fc);
+      setFootprints(fc);
       fitTo(fc);
       renderItemList(feats);
       itemCount.textContent = "(" + feats.length + ")";
@@ -211,6 +222,30 @@
   }
   function zoomToFeature(f) { fitTo({ type: "FeatureCollection", features: [f] }); }
 
+  // Is this asset served by the GeoCatalog itself (so it needs the bearer token)?
+  // We only attach the token to same-origin catalog assets — never to third-party URLs,
+  // to avoid leaking the access token to another origin.
+  function isCatalogAsset(href) {
+    try { return new URL(href, window.location.href).origin === new URL(catalogUrl()).origin; }
+    catch (e) { return false; }
+  }
+
+  async function loadCatalogThumb(href, popup) {
+    try {
+      var token = await getToken();
+      var resp = await fetch(href, { headers: { Authorization: "Bearer " + token } });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      var obj = URL.createObjectURL(await resp.blob());
+      var root = popup.getElement && popup.getElement();
+      var ph = root && root.querySelector("[data-thumb]");
+      if (ph) { ph.outerHTML = "<img src='" + obj + "' alt='preview' />"; }
+    } catch (e) {
+      var root2 = popup.getElement && popup.getElement();
+      var ph2 = root2 && root2.querySelector("[data-thumb]");
+      if (ph2) { ph2.textContent = "preview unavailable"; }
+    }
+  }
+
   function showItemPopup(f) {
     var b = bboxOf({ type: "FeatureCollection", features: [f] });
     if (!b) return;
@@ -223,8 +258,11 @@
     var cloud = (f.properties && f.properties["eo:cloud_cover"]);
     var html = "<b>" + (f.id || "item") + "</b><br /><span style='color:#97a3bd'>" + dt + "</span>";
     if (cloud != null) html += "<br /><span style='color:#97a3bd'>cloud: " + Math.round(cloud) + "%</span>";
-    if (thumb) html += "<img src='" + thumb + "' alt='preview' />";
-    new maplibregl.Popup({ maxWidth: "260px" }).setLngLat(center).setHTML(html).addTo(map);
+    var needsToken = thumb && isCatalogAsset(thumb);
+    if (thumb && !needsToken) { html += "<img src='" + thumb + "' alt='preview' />"; }
+    else if (needsToken) { html += "<div data-thumb style='color:#97a3bd;margin-top:6px'>loading preview…</div>"; }
+    var popup = new maplibregl.Popup({ maxWidth: "260px" }).setLngLat(center).setHTML(html).addTo(map);
+    if (needsToken) { loadCatalogThumb(thumb, popup); }
   }
 
   // --- Wire up UI --------------------------------------------------------------------

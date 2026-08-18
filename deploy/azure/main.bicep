@@ -44,6 +44,16 @@ param seedSampleData bool = true
 @description('Deploy the StormLens web app (a branded showcase + live map explorer over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation.')
 param deployWebApp bool = true
 
+@description('Region for the StormLens Static Web App. Azure Static Web Apps is only offered in a few regions; the content is served globally from the CDN regardless of this value, so the default is safe for any deployment location.')
+@allowed([
+  'westus2'
+  'centralus'
+  'eastus2'
+  'westeurope'
+  'eastasia'
+])
+param staticWebAppLocation string = 'eastus2'
+
 @description('Administrator username for the workstation VM.')
 param adminUsername string = 'azureuser'
 
@@ -601,7 +611,10 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 // ------------------------------------------------------------------------------------
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
   name: staticWebAppName
-  location: location
+  location: staticWebAppLocation
+  identity: {
+    type: 'SystemAssigned'
+  }
   sku: {
     name: 'Free'
     tier: 'Free'
@@ -633,3 +646,4 @@ output auroraModelDeployed bool = deployAuroraDeployment
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
 output webAppUrl string = deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : 'not-deployed'
+output webAppPrincipalId string = deployWebApp ? staticWebApp.identity.principalId : 'not-deployed'

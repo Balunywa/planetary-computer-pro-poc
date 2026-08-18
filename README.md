@@ -336,11 +336,14 @@ thumbnails on a MapLibre map. It is a no-build static site (CDN scripts + a runt
   The public URL is in the `webAppUrl` deployment output and in `connection-info.txt`.
 
 Both modes are on by default and controlled by the **Deploy the StormLens web app** toggle
-in the portal form (or the `deployWebApp` parameter). One manual step remains: the Live
-Explorer signs in with **MSAL**, so create a Microsoft Entra **app registration** (SPA
-redirect for your local/SWA URL, delegated access to the GeoCatalog) and paste its
-`clientId`/`tenantId` into `C:\StormLens\webapp\assets\app-config.js` (the GeoCatalog URL is
-already filled in). The showcase pages work without sign-in; only the live map needs it.
+in the portal form (or the `deployWebApp` parameter). The Live Explorer signs in with
+**MSAL**, and the deployment **auto-creates the Microsoft Entra app registration** (SPA
+redirect URIs for the local and Static Web Apps URLs, delegated GeoCatalog access) and writes
+its `clientId`/`tenantId` into `app-config.js` — best-effort, so it only succeeds when the
+workstation identity (or signed-in deployer) has directory rights to create app
+registrations. If it can't, `setup.ps1` leaves the IDs blank and `connection-info.txt`
+explains the one manual step. The showcase pages work without sign-in; only the live map
+needs it.
 
 ## Use your own data (managed-identity ingestion)
 

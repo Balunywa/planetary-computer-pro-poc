@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "4285076901191120160"
+      "templateHash": "15198646824616749591"
     }
   },
   "parameters": {
@@ -67,6 +67,20 @@
       "defaultValue": true,
       "metadata": {
         "description": "Deploy the StormLens web app (a branded showcase + live map explorer over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation."
+      }
+    },
+    "staticWebAppLocation": {
+      "type": "string",
+      "defaultValue": "eastus2",
+      "allowedValues": [
+        "westus2",
+        "centralus",
+        "eastus2",
+        "westeurope",
+        "eastasia"
+      ],
+      "metadata": {
+        "description": "Region for the StormLens Static Web App. Azure Static Web Apps is only offered in a few regions; the content is served globally from the CDN regardless of this value, so the default is safe for any deployment location."
       }
     },
     "adminUsername": {
@@ -715,7 +729,10 @@
       "type": "Microsoft.Web/staticSites",
       "apiVersion": "2023-12-01",
       "name": "[variables('staticWebAppName')]",
-      "location": "[parameters('location')]",
+      "location": "[parameters('staticWebAppLocation')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
       "sku": {
         "name": "Free",
         "tier": "Free"
@@ -796,6 +813,10 @@
     "webAppUrl": {
       "type": "string",
       "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').defaultHostname), 'not-deployed')]"
+    },
+    "webAppPrincipalId": {
+      "type": "string",
+      "value": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01', 'full').identity.principalId, 'not-deployed')]"
     }
   }
 }
