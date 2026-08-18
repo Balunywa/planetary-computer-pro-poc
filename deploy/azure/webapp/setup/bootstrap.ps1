@@ -1,5 +1,5 @@
 # ============================================================================
-#  StormLens local setup — pulls the static site, wires your GeoCatalog URL,
+#  StormLens local setup - pulls the static site, wires your GeoCatalog URL,
 #  and serves it at http://localhost:<port> on any Windows machine or VM.
 #
 #  Zero dependencies: no Node, no Python, no git. It uses a built-in .NET
@@ -25,7 +25,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 Write-Host ''
-Write-Host '  StormLens — local setup' -ForegroundColor Cyan
+Write-Host '  StormLens - local setup' -ForegroundColor Cyan
 Write-Host '  Weather intelligence for energy' -ForegroundColor DarkCyan
 Write-Host ''
 

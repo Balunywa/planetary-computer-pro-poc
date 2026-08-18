@@ -38,6 +38,18 @@
         <div class="step"><div class="n"></div><div><h4>Run the weather workflow</h4><p>Open the hurricane forecast notebook (its <code>.env</code> is pre-filled) and run it top to bottom.</p></div></div>
         <div class="step"><div class="n"></div><div><h4>Explore in StormLens</h4><p>Open this site’s <a href="explorer.html">Live Explorer</a>, sign in, and view your collections on the map.</p></div></div>
       </div>
+      <div class="grid cols-2" style="margin-top:22px">
+        <div class="card">
+          <div class="ico">🅰️</div><h3>Deploy to Azure (portal)</h3>
+          <p>The classic one-click path: the portal form collects your components + credentials and runs the ARM template. Best when you're already in the Azure portal.</p>
+          <p style="margin-top:14px"><a class="btn btn-primary" href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBalunywa%2Fplanetary-computer-pro-poc%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FBalunywa%2Fplanetary-computer-pro-poc%2Fmain%2Fdeploy%2Fazure%2FcreateUiDefinition.json" target="_blank" rel="noopener">🚀 Deploy to Azure</a></p>
+        </div>
+        <div class="card">
+          <div class="ico">🧭</div><h3>Guided deploy wizard (local)</h3>
+          <p>No terminal. Download the wizard, double-click it, and a browser wizard signs you in, runs prerequisite checks, and provisions the same template with a <b>live phase tracker</b>.</p>
+          <p style="margin-top:14px"><a class="btn btn-primary" href="StormLens-Deploy.cmd" download>⬇️ Download deploy wizard (.cmd)</a></p>
+        </div>
+      </div>
     </div>
   </section>
 

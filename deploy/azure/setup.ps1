@@ -574,8 +574,9 @@ if ($webAppOn -and $WebAppBaseUrl) {
         New-Item -ItemType Directory -Path (Join-Path $stormLensDir 'assets') -Force | Out-Null
         $webFiles = @(
             'index.html', 'weather.html', 'explorer.html', 'architecture.html', 'get-started.html',
-            'staticwebapp.config.json', 'StormLens-Setup.cmd',
-            'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js', 'setup/bootstrap.ps1'
+            'staticwebapp.config.json', 'StormLens-Setup.cmd', 'StormLens-Deploy.cmd',
+            'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js',
+            'setup/bootstrap.ps1', 'wizard/wizard.html', 'wizard/deploy-wizard.ps1'
         )
         $base = $WebAppBaseUrl.TrimEnd('/')
         foreach ($rel in $webFiles) {

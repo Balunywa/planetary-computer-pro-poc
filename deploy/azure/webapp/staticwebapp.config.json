@@ -1,11 +1,12 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/setup/*", "*.cmd", "*.ps1"]
+    "exclude": ["/assets/*", "/setup/*", "/wizard/*", "*.cmd", "*.ps1"]
   },
   "routes": [
     { "route": "/", "rewrite": "/index.html" },
-    { "route": "/StormLens-Setup.cmd", "headers": { "content-disposition": "attachment; filename=StormLens-Setup.cmd" } }
+    { "route": "/StormLens-Setup.cmd", "headers": { "content-disposition": "attachment; filename=StormLens-Setup.cmd" } },
+    { "route": "/StormLens-Deploy.cmd", "headers": { "content-disposition": "attachment; filename=StormLens-Deploy.cmd" } }
   ],
   "mimeTypes": {
     ".json": "application/json",

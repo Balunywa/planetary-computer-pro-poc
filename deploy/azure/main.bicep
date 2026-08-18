@@ -615,9 +615,12 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp)
   identity: {
     type: 'SystemAssigned'
   }
+  // Standard (not Free) is required: the Free tier does not support a
+  // system-assigned managed identity. Combining identity+Free makes the
+  // resource provider reject the deploy with "SkuCode 'Free' is invalid".
   sku: {
-    name: 'Free'
-    tier: 'Free'
+    name: 'Standard'
+    tier: 'Standard'
   }
   properties: {
     allowConfigFileUpdates: true

@@ -176,6 +176,18 @@ the workstation, and select **Review + create**.
 > at 30 minutes. The deployment status may show "Created" before the GeoCatalog is fully
 > ready.
 
+### Or: the guided deploy wizard (no terminal)
+
+Prefer a self-service, click-through experience away from the portal? Download
+**`StormLens-Deploy.cmd`** (from the [Get Started page](deploy/azure/webapp/get-started.html)
+of the web app) and double-click it on any Windows machine. It ensures the Azure CLI is
+present (installs it with winget if missing), then opens a **local browser wizard** at
+`http://localhost:7333` that signs you in, lets you pick subscription / region / components,
+runs prerequisite checks, and provisions the **same `azuredeploy.json` template** with a
+live phase tracker and streaming log. It uses a built-in PowerShell HTTP listener (no Node,
+no Python). This is an *additional* path — the **Deploy to Azure** button above is
+unchanged.
+
 ## Deploy from the command line (optional)
 
 ```bash
