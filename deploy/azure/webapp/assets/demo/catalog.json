@@ -1,0 +1,475 @@
+{
+  "_comment": "REAL sample data for StormLens local/demo mode. Genuine Sentinel-2 L2A scenes over Port Fourchon / the Louisiana Gulf coast from Microsoft's PUBLIC Planetary Computer STAC + TiTiler (planetarycomputer.microsoft.com). Each item carries a real 'tiler.tiles' XYZ template (the same TiTiler endpoint PC Explorer consumes) so the map paints actual satellite pixels, plus a rendered_preview PNG. Same AOI/date/cloud filter setup.ps1 uses to seed a live GeoCatalog. Loaded by explorer.js in demo mode (no Entra) or with ?demo=1.",
+  "collections": [
+    {
+      "id": "sentinel-2-l2a-sample",
+      "title": "Sentinel-2 L2A (real sample scenes)"
+    }
+  ],
+  "items": {
+    "sentinel-2-l2a-sample": [
+      {
+        "type": "Feature",
+        "id": "S2B_MSIL2A_20240110T164649_R126_T15RYN_20240110T224239",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -89.8449694,
+                29.792585
+              ],
+              [
+                -89.8466698,
+                29.7866791
+              ],
+              [
+                -89.8889707,
+                29.6391421
+              ],
+              [
+                -89.9311402,
+                29.491609
+              ],
+              [
+                -89.9650409,
+                29.3725455
+              ],
+              [
+                -89.9733323,
+                29.343463
+              ],
+              [
+                -90.015171,
+                29.1959805
+              ],
+              [
+                -90.0165244,
+                29.1911851
+              ],
+              [
+                -90.0566832,
+                29.0491796
+              ],
+              [
+                -90.0982215,
+                28.9016914
+              ],
+              [
+                -90.1245735,
+                28.8079057
+              ],
+              [
+                -90.9507208,
+                28.8238999
+              ],
+              [
+                -90.9308236,
+                29.8142615
+              ],
+              [
+                -89.8449694,
+                29.792585
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "datetime": "2024-01-10T16:46:49.024000Z",
+          "eo:cloud_cover": 22.0,
+          "platform": "Sentinel-2B"
+        },
+        "assets": {
+          "rendered_preview": {
+            "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240110T164649_R126_T15RYN_20240110T224239&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png",
+            "type": "image/png"
+          }
+        },
+        "tiler": {
+          "tiles": [
+            "https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240110T164649_R126_T15RYN_20240110T224239&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png"
+          ],
+          "minzoom": 0,
+          "maxzoom": 24,
+          "bounds": [
+            -90.95072084,
+            28.80790571,
+            -89.8449694,
+            29.81426153
+          ]
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "S2B_MSIL2A_20240120T164619_R126_T16RBT_20240120T211409",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -89.8415199,
+                29.7990379
+              ],
+              [
+                -89.8729199,
+                29.6899315
+              ],
+              [
+                -89.9150401,
+                29.542435
+              ],
+              [
+                -89.9569726,
+                29.3949683
+              ],
+              [
+                -89.9987632,
+                29.2475055
+              ],
+              [
+                -90.0404785,
+                29.1000076
+              ],
+              [
+                -90.0486425,
+                29.0710744
+              ],
+              [
+                -90.0785667,
+                28.9651563
+              ],
+              [
+                -90.1035368,
+                29.7940071
+              ],
+              [
+                -89.8415199,
+                29.7990379
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "datetime": "2024-01-20T16:46:19.024000Z",
+          "eo:cloud_cover": 0.0,
+          "platform": "Sentinel-2B"
+        },
+        "assets": {
+          "rendered_preview": {
+            "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240120T164619_R126_T16RBT_20240120T211409&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png",
+            "type": "image/png"
+          }
+        },
+        "tiler": {
+          "tiles": [
+            "https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240120T164619_R126_T16RBT_20240120T211409&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png"
+          ],
+          "minzoom": 0,
+          "maxzoom": 24,
+          "bounds": [
+            -90.1035368,
+            28.9651563,
+            -89.8415199,
+            29.7990379
+          ]
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "S2B_MSIL2A_20240120T164619_R126_T15RYN_20240120T222325",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -89.8433861,
+                29.7925534
+              ],
+              [
+                -89.8729199,
+                29.6899315
+              ],
+              [
+                -89.9150401,
+                29.542435
+              ],
+              [
+                -89.9569726,
+                29.3949683
+              ],
+              [
+                -89.9987632,
+                29.2475055
+              ],
+              [
+                -90.0404785,
+                29.1000076
+              ],
+              [
+                -90.0486425,
+                29.0710744
+              ],
+              [
+                -90.0823271,
+                28.951846
+              ],
+              [
+                -90.0948549,
+                28.9072957
+              ],
+              [
+                -90.1229072,
+                28.8078734
+              ],
+              [
+                -90.9507208,
+                28.8238999
+              ],
+              [
+                -90.9308236,
+                29.8142615
+              ],
+              [
+                -89.8433861,
+                29.7925534
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "datetime": "2024-01-20T16:46:19.024000Z",
+          "eo:cloud_cover": 0.0,
+          "platform": "Sentinel-2B"
+        },
+        "assets": {
+          "rendered_preview": {
+            "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240120T164619_R126_T15RYN_20240120T222325&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png",
+            "type": "image/png"
+          }
+        },
+        "tiler": {
+          "tiles": [
+            "https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240120T164619_R126_T15RYN_20240120T222325&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png"
+          ],
+          "minzoom": 0,
+          "maxzoom": 24,
+          "bounds": [
+            -90.95072084,
+            28.80787345,
+            -89.84338613,
+            29.81426153
+          ]
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "S2A_MSIL2A_20240204T164501_R126_T16RBT_20240204T211445",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -89.8330576,
+                29.7992004
+              ],
+              [
+                -89.8342376,
+                29.7951172
+              ],
+              [
+                -89.8766597,
+                29.6475265
+              ],
+              [
+                -89.9189364,
+                29.4999895
+              ],
+              [
+                -89.9608829,
+                29.3524718
+              ],
+              [
+                -90.0027405,
+                29.2050274
+              ],
+              [
+                -90.0441744,
+                29.0576048
+              ],
+              [
+                -90.0777572,
+                28.9382867
+              ],
+              [
+                -90.1035368,
+                29.7940071
+              ],
+              [
+                -89.8330576,
+                29.7992004
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "datetime": "2024-02-04T16:45:01.024000Z",
+          "eo:cloud_cover": 0.0,
+          "platform": "Sentinel-2A"
+        },
+        "assets": {
+          "rendered_preview": {
+            "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2A_MSIL2A_20240204T164501_R126_T16RBT_20240204T211445&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png",
+            "type": "image/png"
+          }
+        },
+        "tiler": {
+          "tiles": [
+            "https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=sentinel-2-l2a&item=S2A_MSIL2A_20240204T164501_R126_T16RBT_20240204T211445&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png"
+          ],
+          "minzoom": 0,
+          "maxzoom": 24,
+          "bounds": [
+            -90.1035368,
+            28.9382867,
+            -89.8330576,
+            29.7992004
+          ]
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "S2A_MSIL2A_20240204T164501_R126_T15RYN_20240204T211502",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -89.8350225,
+                29.7923864
+              ],
+              [
+                -89.8766597,
+                29.6475265
+              ],
+              [
+                -89.9189364,
+                29.4999895
+              ],
+              [
+                -89.9608829,
+                29.3524718
+              ],
+              [
+                -90.0027405,
+                29.2050274
+              ],
+              [
+                -90.0441744,
+                29.0576048
+              ],
+              [
+                -90.0856578,
+                28.910216
+              ],
+              [
+                -90.114476,
+                28.8077102
+              ],
+              [
+                -90.9507208,
+                28.8238999
+              ],
+              [
+                -90.9308236,
+                29.8142615
+              ],
+              [
+                -89.8350225,
+                29.7923864
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "datetime": "2024-02-04T16:45:01.024000Z",
+          "eo:cloud_cover": 11.5,
+          "platform": "Sentinel-2A"
+        },
+        "assets": {
+          "rendered_preview": {
+            "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2A_MSIL2A_20240204T164501_R126_T15RYN_20240204T211502&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png",
+            "type": "image/png"
+          }
+        },
+        "tiler": {
+          "tiles": [
+            "https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=sentinel-2-l2a&item=S2A_MSIL2A_20240204T164501_R126_T15RYN_20240204T211502&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png"
+          ],
+          "minzoom": 0,
+          "maxzoom": 24,
+          "bounds": [
+            -90.95072084,
+            28.80771022,
+            -89.83502254,
+            29.81426153
+          ]
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "S2B_MSIL2A_20240206T163449_R083_T16RBT_20240206T230423",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -90.1035368,
+                29.7940071
+              ],
+              [
+                -88.9684382,
+                29.8158012
+              ],
+              [
+                -88.9495082,
+                28.8253788
+              ],
+              [
+                -90.0737251,
+                28.8044452
+              ],
+              [
+                -90.1035368,
+                29.7940071
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "datetime": "2024-02-06T16:34:49.024000Z",
+          "eo:cloud_cover": 0.0,
+          "platform": "Sentinel-2B"
+        },
+        "assets": {
+          "rendered_preview": {
+            "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240206T163449_R083_T16RBT_20240206T230423&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png",
+            "type": "image/png"
+          }
+        },
+        "tiler": {
+          "tiles": [
+            "https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=sentinel-2-l2a&item=S2B_MSIL2A_20240206T163449_R083_T16RBT_20240206T230423&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&format=png"
+          ],
+          "minzoom": 0,
+          "maxzoom": 24,
+          "bounds": [
+            -90.1035368,
+            28.8044452,
+            -88.9495082,
+            29.8158012
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -23,29 +23,50 @@
   catalogInput.value = CFG.geoCatalogUrl || "";
 
   // --- Map ---------------------------------------------------------------------------
+  // liveToken holds the current GeoCatalog access token so the map's raster tile requests
+  // (which go out as <img>/fetch and can't set headers themselves) can be authenticated
+  // for a live catalog. In demo mode the tiles are public (Planetary Computer) and no
+  // token is attached. This is the same approach the PC Explorer uses to sign tile calls.
+  var liveToken = null;
+
   var map = new maplibregl.Map({
     container: "map",
+    // Start with a dependency-free background so the map's "load" event fires immediately
+    // in every environment. The OSM basemap is added AFTER load (below), so a blocked or
+    // slow tile provider can never stall map initialization or hide the data layers.
     style: {
       version: 8,
-      sources: {
-        osm: {
-          type: "raster",
-          tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          attribution: "© OpenStreetMap contributors"
-        }
-      },
+      sources: {},
       layers: [
-        { id: "bg", type: "background", paint: { "background-color": "#0b1020" } },
-        { id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.85 } }
+        { id: "bg", type: "background", paint: { "background-color": "#0b1020" } }
       ]
     },
     center: [-90.19, 29.1], // Port Fourchon, Gulf of Mexico
-    zoom: 6
+    zoom: 6,
+    transformRequest: function (url, resourceType) {
+      if (resourceType === "Tile" && liveToken && isCatalogOrigin(url)) {
+        return { url: url, headers: { Authorization: "Bearer " + liveToken } };
+      }
+    }
   });
   map.addControl(new maplibregl.NavigationControl(), "top-right");
 
+  var mapReady = false;
+  var pendingTiler = null;
+  var pendingFC = null;
+
   map.on("load", function () {
+    // Basemap added here (not in the initial style) so a blocked OSM endpoint never
+    // prevents the map from loading or the footprints/imagery from rendering.
+    if (!map.getSource("osm")) {
+      map.addSource("osm", {
+        type: "raster",
+        tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "© OpenStreetMap contributors"
+      });
+      map.addLayer({ id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.85 } });
+    }
     map.addSource("footprints", { type: "geojson", data: emptyFC() });
     map.addLayer({
       id: "footprints-fill", type: "fill", source: "footprints",
@@ -55,6 +76,9 @@
       id: "footprints-line", type: "line", source: "footprints",
       paint: { "line-color": "#4cc2ff", "line-width": 1.5 }
     });
+    mapReady = true;
+    if (pendingFC) { var s = map.getSource("footprints"); if (s) s.setData(pendingFC); pendingFC = null; }
+    if (pendingTiler) { applyRaster(pendingTiler); pendingTiler = null; }
   });
 
   function emptyFC() { return { type: "FeatureCollection", features: [] }; }
@@ -64,26 +88,84 @@
   function setFootprints(fc) {
     var src = map.getSource("footprints");
     if (src) { src.setData(fc); return; }
-    map.once("load", function () {
-      var s = map.getSource("footprints");
-      if (s) s.setData(fc);
+    pendingFC = fc;
+  }
+
+  // --- Satellite imagery raster layer ------------------------------------------------
+  // Paints the actual pixels of the selected scene onto the map using its TiTiler XYZ
+  // template (the same /item/tiles/... endpoint the Planetary Computer Explorer uses),
+  // drawn beneath the footprint outlines so context stays visible.
+  var RASTER_SRC = "item-raster";
+  var RASTER_LYR = "item-raster-layer";
+
+  function isCatalogOrigin(url) {
+    try {
+      var c = catalogUrl();
+      return !!c && new URL(url).origin === new URL(c).origin;
+    } catch (e) { return false; }
+  }
+
+  function clearItemRaster() {
+    if (map.getLayer(RASTER_LYR)) map.removeLayer(RASTER_LYR);
+    if (map.getSource(RASTER_SRC)) map.removeSource(RASTER_SRC);
+  }
+
+  function applyRaster(tiler) {
+    clearItemRaster();
+    if (!tiler || !tiler.tiles || !tiler.tiles.length) return;
+    map.addSource(RASTER_SRC, {
+      type: "raster",
+      tiles: tiler.tiles,
+      tileSize: 256,
+      minzoom: tiler.minzoom || 8,
+      maxzoom: tiler.maxzoom || 18,
+      bounds: tiler.bounds || undefined,
+      attribution: "Imagery: Microsoft Planetary Computer / ESA Sentinel-2"
     });
+    var before = map.getLayer("footprints-fill") ? "footprints-fill" : undefined;
+    map.addLayer({ id: RASTER_LYR, type: "raster", source: RASTER_SRC, paint: { "raster-opacity": 1 } }, before);
+  }
+
+  function addRasterToMap(tiler) {
+    if (mapReady) applyRaster(tiler); else pendingTiler = tiler;
+  }
+
+  // Returns { tiles, minzoom, maxzoom, bounds } for a feature. Demo items carry a
+  // precomputed "tiler" block; live catalog items expose a "tilejson" asset we resolve
+  // (with the user's token) at click time.
+  async function getTilerForFeature(f) {
+    if (f.tiler && f.tiler.tiles && f.tiler.tiles.length) return f.tiler;
+    var tjHref = f.assets && f.assets.tilejson && f.assets.tilejson.href;
+    if (!tjHref) return null;
+    try {
+      var headers = {};
+      if (isCatalogOrigin(tjHref)) { headers.Authorization = "Bearer " + (await getToken()); }
+      var resp = await fetch(tjHref, { headers: headers });
+      if (!resp.ok) return null;
+      var tj = await resp.json();
+      return { tiles: tj.tiles, minzoom: tj.minzoom, maxzoom: tj.maxzoom, bounds: tj.bounds };
+    } catch (e) { return null; }
+  }
+
+  function showFeatureImagery(f) {
+    getTilerForFeature(f).then(addRasterToMap).catch(function () { });
+  }
+
+  function selectFeature(f) {
+    zoomToFeature(f);
+    showItemPopup(f);
+    showFeatureImagery(f);
   }
 
   // --- MSAL auth ---------------------------------------------------------------------
   var msalApp = null;
   var account = null;
 
+  function isEntraConfigured() {
+    return !!(CFG.entra && CFG.entra.clientId && CFG.entra.tenantId);
+  }
+
   function initMsal() {
-    if (!CFG.entra || !CFG.entra.clientId || !CFG.entra.tenantId) {
-      showConfigBanner(
-        "Sign-in is not configured yet. Set the Entra <code>clientId</code> and <code>tenantId</code> " +
-        "in <code>assets/app-config.js</code> (the deployment can do this for you). You can still paste a " +
-        "GeoCatalog URL, but the browser needs an app registration to obtain a token."
-      );
-      authBtn.disabled = true;
-      return;
-    }
     msalApp = new msal.PublicClientApplication({
       auth: {
         clientId: CFG.entra.clientId,
@@ -131,8 +213,8 @@
 
   async function getToken() {
     var req = { scopes: [GEOCAT_SCOPE], account: account };
-    try { return (await msalApp.acquireTokenSilent(req)).accessToken; }
-    catch (e) { return (await msalApp.acquireTokenPopup(req)).accessToken; }
+    try { var r = await msalApp.acquireTokenSilent(req); liveToken = r.accessToken; return r.accessToken; }
+    catch (e) { var r2 = await msalApp.acquireTokenPopup(req); liveToken = r2.accessToken; return r2.accessToken; }
   }
 
   // --- GeoCatalog STAC calls ---------------------------------------------------------
@@ -184,6 +266,8 @@
       fitTo(fc);
       renderItemList(feats);
       itemCount.textContent = "(" + feats.length + ")";
+      clearItemRaster();
+      if (feats.length) showFeatureImagery(feats[0]);
     } catch (e) {
       itemList.innerHTML = '<div class="muted">Could not load items: ' + e.message + "</div>";
     }
@@ -196,7 +280,7 @@
       div.className = "item";
       var dt = (f.properties && (f.properties.datetime || f.properties["start_datetime"])) || "";
       div.innerHTML = "<b>" + (f.id || "item") + "</b><span>" + dt + "</span>";
-      div.onclick = function () { zoomToFeature(f); showItemPopup(f); };
+      div.onclick = function () { selectFeature(f); };
       itemList.appendChild(div);
     });
   }
@@ -265,11 +349,66 @@
     if (needsToken) { loadCatalogThumb(thumb, popup); }
   }
 
+  // --- Offline demo mode -------------------------------------------------------------
+  // Loads bundled sample STAC data (assets/demo/catalog.json) so StormLens can be
+  // explored locally with no Azure sign-in and no live catalog. Used automatically when
+  // Entra is not configured, or forced with ?demo=1 in the URL.
+  var demoItems = {};
+
+  function showDemoItems(collectionId) {
+    var feats = demoItems[collectionId] || [];
+    var fc = { type: "FeatureCollection", features: feats.filter(function (f) { return f.geometry; }) };
+    setFootprints(fc);
+    fitTo(fc);
+    renderItemList(feats);
+    itemCount.textContent = "(" + feats.length + ")";
+    clearItemRaster();
+    if (feats.length) showFeatureImagery(feats[0]);
+  }
+
+  async function enterDemoMode() {
+    authBtn.disabled = true;
+    authBtn.textContent = "Demo";
+    authDot.classList.add("on");
+    authState.textContent = "Demo data (no sign-in)";
+    catalogInput.value = "bundled sample data";
+    catalogInput.disabled = true;
+    showConfigBanner(
+      "Showing bundled <b>demo</b> data so you can explore StormLens locally &mdash; no Azure sign-in " +
+      "and no live catalog needed. To connect your real GeoCatalog, set the Entra <code>clientId</code> " +
+      "and <code>tenantId</code> in <code>assets/app-config.js</code>."
+    );
+    try {
+      var resp = await fetch("assets/demo/catalog.json", { cache: "no-store" });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      var demo = await resp.json();
+      var cols = demo.collections || [];
+      demoItems = demo.items || {};
+      collectionSelect.innerHTML = "";
+      cols.forEach(function (c) {
+        var o = document.createElement("option");
+        o.value = c.id; o.textContent = c.title || c.id;
+        collectionSelect.appendChild(o);
+      });
+      collectionSelect.onchange = function () { showDemoItems(collectionSelect.value); };
+      var preferred = CFG.defaultCollectionId;
+      var start = (preferred && demoItems[preferred]) ? preferred : (cols[0] && cols[0].id);
+      if (start) { collectionSelect.value = start; showDemoItems(start); }
+    } catch (e) {
+      showConfigBanner("Could not load demo data: " + e.message);
+    }
+  }
+
   // --- Wire up UI --------------------------------------------------------------------
   authBtn.onclick = function () { account ? signOut() : signIn().catch(function (e) { alert(e.message); }); };
   collectionSelect.onchange = function () { loadItems(collectionSelect.value); };
   catalogInput.onchange = function () { if (account) loadCollections(); };
 
-  initMsal();
-  setSignedOut();
+  var forceDemo = /[?&]demo=1/.test(window.location.search);
+  if (forceDemo || !isEntraConfigured()) {
+    enterDemoMode();
+  } else {
+    initMsal();
+    setSignedOut();
+  }
 })();
