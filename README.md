@@ -336,7 +336,12 @@ thumbnails on a MapLibre map. It is a no-build static site (CDN scripts + a runt
   The public URL is in the `webAppUrl` deployment output and in `connection-info.txt`.
 
 Both modes are on by default and controlled by the **Deploy the StormLens web app** toggle
-in the portal form (or the `deployWebApp` parameter). The Live Explorer signs in with
+in the portal form (or the `deployWebApp` parameter). There is also a third, VM-independent
+path: a **one-click local installer**. The Get Started page offers a **`StormLens-Setup.cmd`**
+download — double-click it on any Windows machine or VM and it fetches `setup/bootstrap.ps1`
+from this repo, downloads the site into `%LOCALAPPDATA%\StormLens`, asks for your GeoCatalog
+URL, and serves it at `http://localhost:8080` using a built-in PowerShell HTTP listener (no
+Node, Python, git, or admin rights required). The Live Explorer signs in with
 **MSAL**, and the deployment **auto-creates the Microsoft Entra app registration** (SPA
 redirect URIs for the local and Static Web Apps URLs, delegated GeoCatalog access) and writes
 its `clientId`/`tenantId` into `app-config.js` — best-effort, so it only succeeds when the

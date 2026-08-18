@@ -43,11 +43,16 @@
 
   <section>
     <div class="container">
-      <div class="section-head"><p class="section-title">Run the web app</p><h2>Two ways to host StormLens</h2></div>
-      <div class="grid cols-2">
+      <div class="section-head"><p class="section-title">Run the web app</p><h2>Three ways to host StormLens</h2></div>
+      <div class="grid cols-3">
         <div class="card">
-          <div class="ico">🖥️</div><h3>Locally on the workstation</h3>
-          <p>The deployment drops the site on the VM and starts a local server. Or run it yourself:</p>
+          <div class="ico">⬇️</div><h3>One-click local installer</h3>
+          <p>No VM, no clone, nothing to type. Download the installer and double-click it — it downloads the site, asks for your GeoCatalog URL, and serves it at <code>http://localhost:8080</code>.</p>
+          <p style="margin-top:14px"><a class="btn btn-primary" href="StormLens-Setup.cmd" download>⬇️ Download installer (.cmd)</a></p>
+        </div>
+        <div class="card">
+          <div class="ico">🖥️</div><h3>On the deployed workstation</h3>
+          <p>If you deployed the workstation, the site is already published and served on the VM. Or run it yourself:</p>
           <pre>cd C:\StormLens\webapp
 python -m http.server 8080
 # open http://localhost:8080</pre>
@@ -56,6 +61,12 @@ python -m http.server 8080
           <div class="ico">🌐</div><h3>Azure Static Web Apps</h3>
           <p>Select the <b>web app</b> component and the template provisions a Static Web App and publishes these files to a shareable URL — the same experience as this page.</p>
         </div>
+      </div>
+      <div class="callout" style="margin-top:20px">
+        <strong>How the installer works.</strong> The <code>.cmd</code> is just a launcher: it runs PowerShell to
+        fetch <code>setup/bootstrap.ps1</code> from the public repo, which downloads the static files into
+        <code>%LOCALAPPDATA%\StormLens</code> and serves them with a built-in HTTP listener — <b>no Node, no
+        Python, nothing installed</b>. Review the scripts in the repo before running, as with any downloaded installer.
       </div>
     </div>
   </section>

@@ -574,11 +574,13 @@ if ($webAppOn -and $WebAppBaseUrl) {
         New-Item -ItemType Directory -Path (Join-Path $stormLensDir 'assets') -Force | Out-Null
         $webFiles = @(
             'index.html', 'weather.html', 'explorer.html', 'architecture.html', 'get-started.html',
-            'staticwebapp.config.json', 'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js'
+            'staticwebapp.config.json', 'StormLens-Setup.cmd',
+            'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js', 'setup/bootstrap.ps1'
         )
         $base = $WebAppBaseUrl.TrimEnd('/')
         foreach ($rel in $webFiles) {
             $dest = Join-Path $stormLensDir ($rel -replace '/', '\')
+            New-Item -ItemType Directory -Path (Split-Path $dest -Parent) -Force | Out-Null
             try {
                 Invoke-WebRequest -Uri "$base/$rel" -OutFile $dest -UseBasicParsing
             }
