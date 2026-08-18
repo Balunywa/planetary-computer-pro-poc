@@ -27,6 +27,9 @@ on:
     paths:
       - 'pcp-web-sample/**'
       - '.github/workflows/azure-static-web-apps.yml'
+  # Allows the Azure deployment (deploymentScripts) to trigger the first build after it
+  # wires up the token secret and VITE_* variables, and lets you re-run it on demand.
+  workflow_dispatch:
 
 permissions:
   contents: read

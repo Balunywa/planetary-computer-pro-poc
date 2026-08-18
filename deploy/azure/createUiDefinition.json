@@ -88,7 +88,7 @@
                 {
                   "label": "Sample web app (Azure Static Web App)",
                   "value": "webApp",
-                  "description": "The official Microsoft Planetary Computer Pro sample web app (MSAL sign-in + STAC browse + tile map over your GeoCatalog). This provisions an empty Free-tier Azure Static Web App; content is published by the repo's GitHub Actions workflow (the Microsoft-recommended CI/CD model). After deployment, add the SWA deployment token and VITE_* variables to your GitHub repo and push to build/publish."
+                  "description": "The official Microsoft Planetary Computer Pro sample web app (MSAL sign-in + STAC browse + tile map over your GeoCatalog). Provisions a Free-tier Azure Static Web App and, if you supply a GitHub token on the Web app tab, fully auto-wires CI/CD: it sets the deployment-token secret and VITE_* build variables in your repo and triggers the first GitHub Actions build. Configure it on the Web app tab."
                 },
                 {
                   "label": "AI agent (Azure OpenAI / Foundry)",
@@ -181,6 +181,100 @@
         ]
       },
       {
+        "name": "webAppConfig",
+        "label": "Web app",
+        "elements": [
+          {
+            "name": "webAppNotSelected",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[not(contains(steps('components').selected, 'webApp'))]",
+            "options": {
+              "icon": "Info",
+              "text": "The sample web app is not selected. These settings are ignored."
+            }
+          },
+          {
+            "name": "webAppAutoWireInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[contains(steps('components').selected, 'webApp')]",
+            "options": {
+              "icon": "Info",
+              "text": "Provide a GitHub personal access token (classic, with 'repo' + 'workflow' scopes) to FULLY auto-wire CI/CD: the deployment sets the Static Web App deployment-token secret in your repo, sets the VITE_* build variables, and triggers the first GitHub Actions build. Your repo must already contain the pcp-web-sample app and the .github/workflows/azure-static-web-apps.yml workflow on the target branch. Leave the token blank to provision an empty Static Web App and wire GitHub manually."
+            }
+          },
+          {
+            "name": "githubRepositoryUrl",
+            "type": "Microsoft.Common.TextBox",
+            "label": "GitHub repository URL",
+            "defaultValue": "https://github.com/Balunywa/planetary-computer-pro-poc",
+            "toolTip": "HTTPS URL of the GitHub repository that holds the web app and the GitHub Actions workflow.",
+            "constraints": {
+              "required": "[contains(steps('components').selected, 'webApp')]",
+              "regex": "^https://github\\.com/[^/]+/[^/]+$",
+              "validationMessage": "Enter an HTTPS GitHub repo URL, e.g. https://github.com/owner/repo"
+            },
+            "visible": "[contains(steps('components').selected, 'webApp')]"
+          },
+          {
+            "name": "githubBranch",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Branch",
+            "defaultValue": "main",
+            "toolTip": "Branch that the GitHub Actions workflow builds and publishes from.",
+            "constraints": {
+              "required": "[contains(steps('components').selected, 'webApp')]",
+              "regex": "^[A-Za-z0-9._/-]{1,100}$",
+              "validationMessage": "Enter a valid branch name."
+            },
+            "visible": "[contains(steps('components').selected, 'webApp')]"
+          },
+          {
+            "name": "githubToken",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "GitHub personal access token (optional)",
+              "confirmPassword": "Confirm token"
+            },
+            "toolTip": "Classic PAT with 'repo' + 'workflow' scopes. Used once during deployment to wire the SWA token secret and build variables, then discarded (not stored on any resource). Leave blank to skip auto-wiring.",
+            "constraints": {
+              "required": false,
+              "regex": "^$|^(ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})$",
+              "validationMessage": "Enter a valid GitHub PAT (starts with ghp_ or github_pat_) or leave blank."
+            },
+            "options": {
+              "hideConfirmation": true
+            },
+            "visible": "[contains(steps('components').selected, 'webApp')]"
+          },
+          {
+            "name": "entraTenantId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Entra tenant ID",
+            "defaultValue": "",
+            "toolTip": "Directory (tenant) ID of the Entra tenant that owns the SPA app registration and can access the GeoCatalog. Public identifier (not a secret). Required for the web app build to succeed.",
+            "constraints": {
+              "required": "[contains(steps('components').selected, 'webApp')]",
+              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Enter a GUID, e.g. 00000000-0000-0000-0000-000000000000"
+            },
+            "visible": "[contains(steps('components').selected, 'webApp')]"
+          },
+          {
+            "name": "entraClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Entra client (application) ID",
+            "defaultValue": "",
+            "toolTip": "Application (client) ID of the SPA app registration used for MSAL sign-in. Public identifier (not a secret). The app registration must already exist with a SPA redirect URI for the Static Web App URL. Required for the web app build to succeed.",
+            "constraints": {
+              "required": "[contains(steps('components').selected, 'webApp')]",
+              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Enter a GUID, e.g. 00000000-0000-0000-0000-000000000000"
+            },
+            "visible": "[contains(steps('components').selected, 'webApp')]"
+          }
+        ]
+      },
+      {
         "name": "aiConfig",
         "label": "AI",
         "elements": [
@@ -262,6 +356,11 @@
       "deploySampleStorage": "[contains(steps('components').selected, 'sampleStorage')]",
       "seedSampleData": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').seedSampleData)]",
       "deployWebApp": "[contains(steps('components').selected, 'webApp')]",
+      "githubRepositoryUrl": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').githubRepositoryUrl, 'https://github.com/Balunywa/planetary-computer-pro-poc')]",
+      "githubBranch": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').githubBranch, 'main')]",
+      "githubToken": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').githubToken, '')]",
+      "entraTenantId": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').entraTenantId, '')]",
+      "entraClientId": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').entraClientId, '')]",
       "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
       "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
       "adminUsername": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminUsername, 'azureuser')]",

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "16687747675739184610"
+      "templateHash": "3868261798676575710"
     }
   },
   "parameters": {
@@ -82,6 +82,41 @@
       ],
       "metadata": {
         "description": "Optional override for the sample web app Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value."
+      }
+    },
+    "githubRepositoryUrl": {
+      "type": "string",
+      "defaultValue": "https://github.com/Balunywa/planetary-computer-pro-poc",
+      "metadata": {
+        "description": "GitHub repository (https://github.com/<owner>/<repo>) that hosts the sample web app (pcp-web-sample) and the deploy workflow. The deploy button wires this repo to the Static Web App CI/CD."
+      }
+    },
+    "githubBranch": {
+      "type": "string",
+      "defaultValue": "main",
+      "metadata": {
+        "description": "Branch the Static Web App builds and deploys from."
+      }
+    },
+    "githubToken": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "GitHub personal access token (classic) with \"repo\" + \"workflow\" scopes. Used ONCE at deploy time to wire the Static Web App deployment token into the repo as a GitHub secret and to set the build variables + trigger the first CI/CD run. It is not stored on any resource. Leave blank to skip auto-wiring (you then add the token/variables in GitHub manually)."
+      }
+    },
+    "entraClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Microsoft Entra SPA app registration (client) ID the sample web app uses for MSAL sign-in. This is a public identifier, not a secret. Required for sign-in to work."
+      }
+    },
+    "entraTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret."
       }
     },
     "adminUsername": {
@@ -217,7 +252,11 @@
       "canadacentral": "eastus2",
       "uksouth": "westeurope"
     },
-    "effectiveStaticWebAppLocation": "[if(empty(parameters('staticWebAppLocation')), variables('staticWebAppRegionForLocation')[parameters('location')], parameters('staticWebAppLocation'))]"
+    "effectiveStaticWebAppLocation": "[if(empty(parameters('staticWebAppLocation')), variables('staticWebAppRegionForLocation')[parameters('location')], parameters('staticWebAppLocation'))]",
+    "wireGithub": "[and(parameters('deployWebApp'), not(empty(parameters('githubToken'))))]",
+    "githubRepoPath": "[replace(replace(parameters('githubRepositoryUrl'), 'https://github.com/', ''), '.git', '')]",
+    "githubOwner": "[split(variables('githubRepoPath'), '/')[0]]",
+    "githubRepo": "[split(variables('githubRepoPath'), '/')[1]]"
   },
   "resources": [
     {
@@ -733,10 +772,64 @@
         "name": "Free",
         "tier": "Free"
       },
+      "properties": "[if(variables('wireGithub'), createObject('repositoryUrl', parameters('githubRepositoryUrl'), 'branch', parameters('githubBranch'), 'repositoryToken', parameters('githubToken'), 'allowConfigFileUpdates', true(), 'stagingEnvironmentPolicy', 'Enabled', 'buildProperties', createObject('appLocation', 'pcp-web-sample', 'outputLocation', 'dist', 'skipGithubActionWorkflowGeneration', true(), 'githubActionSecretNameOverride', 'AZURE_STATIC_WEB_APPS_API_TOKEN')), createObject('allowConfigFileUpdates', true(), 'stagingEnvironmentPolicy', 'Enabled'))]"
+    },
+    {
+      "condition": "[variables('wireGithub')]",
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "[format('wire-swa-cicd-{0}', variables('amlSuffix'))]",
+      "location": "[parameters('location')]",
+      "kind": "AzureCLI",
       "properties": {
-        "allowConfigFileUpdates": true,
-        "stagingEnvironmentPolicy": "Enabled"
-      }
+        "azCliVersion": "2.61.0",
+        "retentionInterval": "PT1H",
+        "timeout": "PT15M",
+        "cleanupPreference": "OnSuccess",
+        "environmentVariables": [
+          {
+            "name": "GH_TOKEN",
+            "secureValue": "[parameters('githubToken')]"
+          },
+          {
+            "name": "GH_OWNER",
+            "value": "[variables('githubOwner')]"
+          },
+          {
+            "name": "GH_REPO",
+            "value": "[variables('githubRepo')]"
+          },
+          {
+            "name": "GH_BRANCH",
+            "value": "[parameters('githubBranch')]"
+          },
+          {
+            "name": "WORKFLOW_FILE",
+            "value": "azure-static-web-apps.yml"
+          },
+          {
+            "name": "VITE_GEOCATALOG_URL",
+            "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
+          },
+          {
+            "name": "VITE_ENTRA_TENANT_ID",
+            "value": "[parameters('entraTenantId')]"
+          },
+          {
+            "name": "VITE_ENTRA_CLIENT_ID",
+            "value": "[parameters('entraClientId')]"
+          },
+          {
+            "name": "VITE_GEOCATALOG_API_VERSION",
+            "value": "2025-04-30-preview"
+          }
+        ],
+        "scriptContent": "      set +e\n      api=\"https://api.github.com/repos/$GH_OWNER/$GH_REPO\"\n      hdr_auth=\"Authorization: Bearer $GH_TOKEN\"\n      hdr_accept=\"Accept: application/vnd.github+json\"\n      hdr_ver=\"X-GitHub-Api-Version: 2022-11-28\"\n\n      setvar () {\n        vname=\"$1\"; vval=\"$2\"\n        # Try update first; if the variable does not exist yet (404), create it.\n        code=$(curl -s -o /dev/null -w \"%{http_code}\" -X PATCH \\\n          -H \"$hdr_auth\" -H \"$hdr_accept\" -H \"$hdr_ver\" \\\n          \"$api/actions/variables/$vname\" \\\n          -d \"$(printf '{\"name\":\"%s\",\"value\":\"%s\"}' \"$vname\" \"$vval\")\")\n        if [ \"$code\" != \"204\" ]; then\n          curl -s -o /dev/null -X POST \\\n            -H \"$hdr_auth\" -H \"$hdr_accept\" -H \"$hdr_ver\" \\\n            \"$api/actions/variables\" \\\n            -d \"$(printf '{\"name\":\"%s\",\"value\":\"%s\"}' \"$vname\" \"$vval\")\"\n        fi\n        echo \"set variable $vname (update http=$code)\"\n      }\n\n      setvar VITE_GEOCATALOG_URL \"$VITE_GEOCATALOG_URL\"\n      setvar VITE_ENTRA_TENANT_ID \"$VITE_ENTRA_TENANT_ID\"\n      setvar VITE_ENTRA_CLIENT_ID \"$VITE_ENTRA_CLIENT_ID\"\n      setvar VITE_GEOCATALOG_API_VERSION \"$VITE_GEOCATALOG_API_VERSION\"\n\n      echo \"Triggering workflow $WORKFLOW_FILE on $GH_BRANCH...\"\n      curl -s -o /dev/null -w \"workflow_dispatch http=%{http_code}\\n\" -X POST \\\n        -H \"$hdr_auth\" -H \"$hdr_accept\" -H \"$hdr_ver\" \\\n        \"$api/actions/workflows/$WORKFLOW_FILE/dispatches\" \\\n        -d \"$(printf '{\"ref\":\"%s\"}' \"$GH_BRANCH\")\"\n\n      echo \"CI/CD wiring complete.\"\n      exit 0\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
+        "[resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))]"
+      ]
     }
   ],
   "outputs": {
@@ -813,9 +906,9 @@
     "webAppDeployHint": {
       "type": "string",
       "metadata": {
-        "description": "Publish content to this Static Web App via the GitHub Actions workflow using the SWA deployment token (portal -> Static Web App -> Manage deployment token)."
+        "description": "How the sample web app is published. When a GitHub PAT was supplied, the deploy wired the token + build variables and triggered CI/CD automatically; otherwise wire them in GitHub manually."
       },
-      "value": "[if(parameters('deployWebApp'), 'GitHub Actions: .github/workflows/azure-static-web-apps.yml (set secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables)', 'not-deployed')]"
+      "value": "[if(parameters('deployWebApp'), if(variables('wireGithub'), 'Auto-wired: GitHub Actions was configured and the first build triggered. Watch the Actions tab; the site publishes to the URL above.', 'Manual: set GitHub secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables and push, or re-deploy with a GitHub PAT to auto-wire.'), 'not-deployed')]"
     },
     "webAppRegion": {
       "type": "string",

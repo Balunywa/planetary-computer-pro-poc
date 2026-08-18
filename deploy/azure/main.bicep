@@ -55,6 +55,22 @@ param deployWebApp bool = true
 ])
 param staticWebAppLocation string = ''
 
+@description('GitHub repository (https://github.com/<owner>/<repo>) that hosts the sample web app (pcp-web-sample) and the deploy workflow. The deploy button wires this repo to the Static Web App CI/CD.')
+param githubRepositoryUrl string = 'https://github.com/Balunywa/planetary-computer-pro-poc'
+
+@description('Branch the Static Web App builds and deploys from.')
+param githubBranch string = 'main'
+
+@description('GitHub personal access token (classic) with "repo" + "workflow" scopes. Used ONCE at deploy time to wire the Static Web App deployment token into the repo as a GitHub secret and to set the build variables + trigger the first CI/CD run. It is not stored on any resource. Leave blank to skip auto-wiring (you then add the token/variables in GitHub manually).')
+@secure()
+param githubToken string = ''
+
+@description('Microsoft Entra SPA app registration (client) ID the sample web app uses for MSAL sign-in. This is a public identifier, not a secret. Required for sign-in to work.')
+param entraClientId string = ''
+
+@description('Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret.')
+param entraTenantId string = ''
+
 @description('Administrator username for the workstation VM.')
 param adminUsername string = 'azureuser'
 
@@ -165,6 +181,14 @@ var staticWebAppRegionForLocation = {
   uksouth: 'westeurope'
 }
 var effectiveStaticWebAppLocation = empty(staticWebAppLocation) ? staticWebAppRegionForLocation[location] : staticWebAppLocation
+
+// GitHub CI/CD wiring: when a PAT is supplied we connect the repo to the Static Web App
+// (which creates the deployment-token GitHub secret automatically) and run a deployment
+// script to set the build variables + trigger the first workflow run.
+var wireGithub = deployWebApp && !empty(githubToken)
+var githubRepoPath = replace(replace(githubRepositoryUrl, 'https://github.com/', ''), '.git', '')
+var githubOwner = split(githubRepoPath, '/')[0]
+var githubRepo = split(githubRepoPath, '/')[1]
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -610,24 +634,134 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 }
 
 // ------------------------------------------------------------------------------------
-// Optional: Planetary Computer Pro sample web app on Azure Static Web Apps. The resource
-// is provisioned empty here; content is built and published by the repo's GitHub Actions
-// workflow (.github/workflows/azure-static-web-apps.yml) using the SWA deployment token -
-// the Microsoft-recommended CI/CD model. No workstation RBAC or VM publish is involved.
+// Optional: Planetary Computer Pro sample web app on Azure Static Web Apps.
+// When a GitHub PAT (githubToken) is supplied, the resource is wired to the repo:
+// Azure creates the deployment-token GitHub secret automatically (named to match the
+// committed workflow) so no manual token copying is needed. Workflow generation is
+// skipped because the repo already ships .github/workflows/azure-static-web-apps.yml
+// (which injects the VITE_* build config). Without a PAT, the SWA is created empty and
+// you wire the token/variables in GitHub yourself.
 // ------------------------------------------------------------------------------------
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
   name: staticWebAppName
   location: effectiveStaticWebAppLocation
-  // Free tier is sufficient for GitHub Actions token-based publishing (no managed
-  // identity is required, since the workstation no longer publishes content).
+  // Free tier is sufficient for GitHub Actions token-based publishing.
   sku: {
     name: 'Free'
     tier: 'Free'
   }
-  properties: {
+  properties: wireGithub ? {
+    repositoryUrl: githubRepositoryUrl
+    branch: githubBranch
+    repositoryToken: githubToken
+    allowConfigFileUpdates: true
+    stagingEnvironmentPolicy: 'Enabled'
+    buildProperties: {
+      appLocation: 'pcp-web-sample'
+      outputLocation: 'dist'
+      skipGithubActionWorkflowGeneration: true
+      githubActionSecretNameOverride: 'AZURE_STATIC_WEB_APPS_API_TOKEN'
+    }
+  } : {
     allowConfigFileUpdates: true
     stagingEnvironmentPolicy: 'Enabled'
   }
+}
+
+// ------------------------------------------------------------------------------------
+// CI/CD wiring init: set the GitHub Actions repository variables the build needs
+// (GeoCatalog URL + Entra sign-in IDs - all public, no secrets) and trigger the first
+// workflow run. The deployment token itself was wired as a GitHub secret by the Static
+// Web App above. Best-effort: any GitHub API hiccup is logged but never fails the deploy.
+// ------------------------------------------------------------------------------------
+resource wireCicd 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (wireGithub) {
+  name: 'wire-swa-cicd-${amlSuffix}'
+  location: location
+  kind: 'AzureCLI'
+  properties: {
+    azCliVersion: '2.61.0'
+    retentionInterval: 'PT1H'
+    timeout: 'PT15M'
+    cleanupPreference: 'OnSuccess'
+    environmentVariables: [
+      {
+        name: 'GH_TOKEN'
+        secureValue: githubToken
+      }
+      {
+        name: 'GH_OWNER'
+        value: githubOwner
+      }
+      {
+        name: 'GH_REPO'
+        value: githubRepo
+      }
+      {
+        name: 'GH_BRANCH'
+        value: githubBranch
+      }
+      {
+        name: 'WORKFLOW_FILE'
+        value: 'azure-static-web-apps.yml'
+      }
+      {
+        name: 'VITE_GEOCATALOG_URL'
+        value: geoCatalog.properties.catalogUri
+      }
+      {
+        name: 'VITE_ENTRA_TENANT_ID'
+        value: entraTenantId
+      }
+      {
+        name: 'VITE_ENTRA_CLIENT_ID'
+        value: entraClientId
+      }
+      {
+        name: 'VITE_GEOCATALOG_API_VERSION'
+        value: '2025-04-30-preview'
+      }
+    ]
+    scriptContent: '''
+      set +e
+      api="https://api.github.com/repos/$GH_OWNER/$GH_REPO"
+      hdr_auth="Authorization: Bearer $GH_TOKEN"
+      hdr_accept="Accept: application/vnd.github+json"
+      hdr_ver="X-GitHub-Api-Version: 2022-11-28"
+
+      setvar () {
+        vname="$1"; vval="$2"
+        # Try update first; if the variable does not exist yet (404), create it.
+        code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+          -H "$hdr_auth" -H "$hdr_accept" -H "$hdr_ver" \
+          "$api/actions/variables/$vname" \
+          -d "$(printf '{"name":"%s","value":"%s"}' "$vname" "$vval")")
+        if [ "$code" != "204" ]; then
+          curl -s -o /dev/null -X POST \
+            -H "$hdr_auth" -H "$hdr_accept" -H "$hdr_ver" \
+            "$api/actions/variables" \
+            -d "$(printf '{"name":"%s","value":"%s"}' "$vname" "$vval")"
+        fi
+        echo "set variable $vname (update http=$code)"
+      }
+
+      setvar VITE_GEOCATALOG_URL "$VITE_GEOCATALOG_URL"
+      setvar VITE_ENTRA_TENANT_ID "$VITE_ENTRA_TENANT_ID"
+      setvar VITE_ENTRA_CLIENT_ID "$VITE_ENTRA_CLIENT_ID"
+      setvar VITE_GEOCATALOG_API_VERSION "$VITE_GEOCATALOG_API_VERSION"
+
+      echo "Triggering workflow $WORKFLOW_FILE on $GH_BRANCH..."
+      curl -s -o /dev/null -w "workflow_dispatch http=%{http_code}\n" -X POST \
+        -H "$hdr_auth" -H "$hdr_accept" -H "$hdr_ver" \
+        "$api/actions/workflows/$WORKFLOW_FILE/dispatches" \
+        -d "$(printf '{"ref":"%s"}' "$GH_BRANCH")"
+
+      echo "CI/CD wiring complete."
+      exit 0
+    '''
+  }
+  dependsOn: [
+    staticWebApp
+  ]
 }
 
 // ------------------------------------------------------------------------------------
@@ -651,7 +785,7 @@ output auroraModelDeployed bool = deployAuroraDeployment
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
 output webAppUrl string = deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : 'not-deployed'
-@description('Publish content to this Static Web App via the GitHub Actions workflow using the SWA deployment token (portal -> Static Web App -> Manage deployment token).')
-output webAppDeployHint string = deployWebApp ? 'GitHub Actions: .github/workflows/azure-static-web-apps.yml (set secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables)' : 'not-deployed'
+@description('How the sample web app is published. When a GitHub PAT was supplied, the deploy wired the token + build variables and triggered CI/CD automatically; otherwise wire them in GitHub manually.')
+output webAppDeployHint string = deployWebApp ? (wireGithub ? 'Auto-wired: GitHub Actions was configured and the first build triggered. Watch the Actions tab; the site publishes to the URL above.' : 'Manual: set GitHub secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables and push, or re-deploy with a GitHub PAT to auto-wire.') : 'not-deployed'
 @description('Region the Static Web App was placed in. Co-located with the main deployment region when Static Web Apps supports it, otherwise the nearest supported region.')
 output webAppRegion string = deployWebApp ? effectiveStaticWebAppLocation : 'not-deployed'
