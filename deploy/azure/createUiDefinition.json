@@ -88,7 +88,7 @@
                 {
                   "label": "Sample web app (Azure Static Web App)",
                   "value": "webApp",
-                  "description": "The official Microsoft Planetary Computer Pro sample web app (MSAL sign-in + STAC browse + tile map over your GeoCatalog), built from the cloned repo and deployed to a Free-tier Azure Static Web App and served locally on the workstation. The workstation publishes the content, so select it too."
+                  "description": "The official Microsoft Planetary Computer Pro sample web app (MSAL sign-in + STAC browse + tile map over your GeoCatalog). This provisions an empty Free-tier Azure Static Web App; content is published by the repo's GitHub Actions workflow (the Microsoft-recommended CI/CD model). After deployment, add the SWA deployment token and VITE_* variables to your GitHub repo and push to build/publish."
                 },
                 {
                   "label": "AI agent (Azure OpenAI / Foundry)",
@@ -261,7 +261,7 @@
       "deployWorkstation": "[contains(steps('components').selected, 'workstation')]",
       "deploySampleStorage": "[contains(steps('components').selected, 'sampleStorage')]",
       "seedSampleData": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').seedSampleData)]",
-      "deployWebApp": "[and(contains(steps('components').selected, 'webApp'), contains(steps('components').selected, 'workstation'))]",
+      "deployWebApp": "[contains(steps('components').selected, 'webApp')]",
       "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
       "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
       "adminUsername": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminUsername, 'azureuser')]",

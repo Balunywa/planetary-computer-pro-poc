@@ -18,3 +18,10 @@ Thumbs.db
 # Local secrets / params
 *.parameters.local.json
 .env
+
+# Node / web app (pcp-web-sample)
+node_modules/
+dist/
+.env.local
+.env.*.local
+npm-debug.log*

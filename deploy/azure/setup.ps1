@@ -52,13 +52,7 @@ param(
     [string] $DeployWebApp = 'false',
 
     [Parameter(Mandatory = $false)]
-    [string] $WebAppBaseUrl = '',
-
-    [Parameter(Mandatory = $false)]
-    [string] $WebAppUrl = '',
-
-    [Parameter(Mandatory = $false)]
-    [string] $SwaDeploymentToken = ''
+    [string] $WebAppUrl = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,88 +85,11 @@ function Install-WithWinget {
 $hasWinget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
 
 # ------------------------------------------------------------------------------------
-# Static Web Apps publishing helpers (used for the early status page AND the final app).
+# NOTE: the sample web app is NOT built or published from this workstation. It is deployed
+# to Azure Static Web Apps by the repo's GitHub Actions workflow
+# (.github/workflows/azure-static-web-apps.yml) - the Microsoft-recommended CI/CD model.
+# This script only provisions the analytics workstation (notebooks / Aurora / VS Code).
 # ------------------------------------------------------------------------------------
-function Install-NodeIfMissing {
-    if (Get-Command npm -ErrorAction SilentlyContinue) { return }
-    Write-Log 'Installing Node.js LTS for the SWA CLI...'
-    if ($hasWinget) {
-        Install-WithWinget -Id 'OpenJS.NodeJS.LTS' -FriendlyName 'Node.js LTS'
-    }
-    else {
-        $nodeMsi = Join-Path $env:TEMP 'node-lts.msi'
-        Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.17.0/node-v20.17.0-x64.msi' -OutFile $nodeMsi
-        Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i `"$nodeMsi`" /quiet /norestart" -Wait
-    }
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
-                [System.Environment]::GetEnvironmentVariable('Path', 'User')
-}
-
-function Invoke-SwaDeploy {
-    param([string] $Folder)
-    Install-NodeIfMissing
-    if (Get-Command npx -ErrorAction SilentlyContinue) {
-        # Run via npx so we don't depend on the global npm bin being on PATH this session.
-        & npx --yes @azure/static-web-apps-cli deploy "$Folder" --deployment-token $SwaDeploymentToken --env production 2>&1 |
-            ForEach-Object { Write-Log $_ }
-        return $true
-    }
-    Write-Log 'WARNING: Node/npx not available after install; cannot publish with the SWA CLI.'
-    return $false
-}
-
-# ------------------------------------------------------------------------------------
-# Early status page: as the very first thing, publish a lightweight "setting up" page to
-# the Static Web App so anyone who opens the URL immediately sees that provisioning is in
-# progress instead of the generic Azure placeholder. The real sample app is built and
-# published at the end of provisioning and transparently replaces this page.
-# ------------------------------------------------------------------------------------
-$webAppEarly = ($DeployWebApp -match '^(true|1|yes)$')
-if ($webAppEarly -and $SwaDeploymentToken) {
-    try {
-        Write-Log 'Publishing the "setting up" status page to the Static Web App...'
-        $holdDir = Join-Path $env:TEMP 'pcpro-holding'
-        New-Item -ItemType Directory -Path $holdDir -Force | Out-Null
-        $holdingHtml = @'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="60">
-  <title>Setting up your Planetary Computer Pro sample app…</title>
-  <style>
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0b1a2b; color: #eaf2fb;
-           display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; }
-    .card { max-width: 560px; padding: 40px; text-align: center; }
-    h1 { font-weight: 600; font-size: 1.4rem; }
-    p { color: #a9c1de; line-height: 1.5; }
-    .spinner { width: 44px; height: 44px; margin: 0 auto 24px; border: 4px solid #24405f;
-               border-top-color: #4aa8ff; border-radius: 50%; animation: spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="spinner"></div>
-    <h1>Setting up your Planetary Computer Pro sample web app…</h1>
-    <p>Provisioning is in progress. This page refreshes automatically and will be replaced by
-       the sample app once the build finishes (typically a few minutes).</p>
-  </div>
-</body>
-</html>
-'@
-        Set-Content -Path (Join-Path $holdDir 'index.html') -Value $holdingHtml -Encoding utf8
-        # Minimal SWA config so every route serves the holding page while we build the real one.
-        '{ "navigationFallback": { "rewrite": "/index.html" } }' | Set-Content -Path (Join-Path $holdDir 'staticwebapp.config.json') -Encoding ascii
-        if (Invoke-SwaDeploy $holdDir) {
-            Write-Log 'Status page is live; users now see progress at the web app URL while the rest provisions.'
-        }
-    }
-    catch {
-        Write-Log "WARNING: could not publish the status page (non-fatal): $($_.Exception.Message)"
-    }
-}
 
 # ------------------------------------------------------------------------------------
 # Python 3.12
@@ -646,179 +563,12 @@ else {
 }
 
 # ------------------------------------------------------------------------------------
-# Official Planetary Computer Pro sample web app: build the Microsoft sample that ships in
-# the cloned repo (tools/javascript-sample), inject the real GeoCatalog URL + an Entra
-# sign-in app registration via its .env.local, serve the built site locally on the
-# workstation, and (if a Static Web Apps deployment token was passed as a protected
-# parameter) publish it to Azure Static Web Apps. All best-effort.
+# Sample web app: intentionally NOT built or published from this workstation. Content is
+# built and deployed to Azure Static Web Apps by the repo's GitHub Actions workflow
+# (.github/workflows/azure-static-web-apps.yml) using the SWA deployment token - the
+# Microsoft-recommended CI/CD model. The Entra sign-in app registration and the VITE_*
+# build variables are configured once in GitHub (see the workflow header for details).
 # ------------------------------------------------------------------------------------
-$webAppOn = ($DeployWebApp -match '^(true|1|yes)$')
-$sampleDir = Join-Path $repoDir 'tools\javascript-sample'
-$sampleDistDir = Join-Path $sampleDir 'dist'
-$entraConfigured = $false
-$explorerClientId = ''
-$explorerTenantId = ''
-if ($webAppOn -and (Test-Path $sampleDir)) {
-
-    # --- Entra app registration (SPA) for the sample's MSAL sign-in. Best-effort and
-    #     non-fatal: only succeeds if the workstation identity has directory rights. ---
-    try {
-        if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw 'Azure CLI not available.' }
-        Write-Log 'Creating the Microsoft Entra app registration for the sample web app sign-in...'
-
-        # Authenticate az with the workstation managed identity (best-effort).
-        & az login --identity --allow-no-subscriptions 2>&1 | ForEach-Object { Write-Log $_ }
-        $explorerTenantId = (& az account show --query tenantId -o tsv 2>$null)
-
-        # SPA redirect URIs: local launcher root + the Static Web App root (if deployed).
-        # The sample is a single page served at '/', so redirects target the root.
-        $redirects = @('http://localhost:8080/')
-        if ($WebAppUrl) { $redirects += ($WebAppUrl.TrimEnd('/') + '/') }
-
-        # Create the app registration, or reuse one with the same name (idempotent re-runs).
-        $appName = "PCPro-Sample-$GeoCatalogName"
-        $explorerClientId = (& az ad app list --display-name $appName --query "[0].appId" -o tsv 2>$null)
-        if ($explorerClientId) {
-            Write-Log "Reusing existing app registration $explorerClientId."
-        }
-        else {
-            $explorerClientId = (& az ad app create --display-name $appName --sign-in-audience AzureADMyOrg --query appId -o tsv 2>$null)
-            if ($explorerClientId) { Write-Log "Created app registration $explorerClientId." }
-        }
-
-        if ($explorerClientId) {
-            # Set the SPA platform redirect URIs via Microsoft Graph (no --spa flag on az).
-            $spaBody = (@{ spa = @{ redirectUris = $redirects } } | ConvertTo-Json -Compress -Depth 5)
-            $spaBodyFile = Join-Path $env:TEMP 'pcpro-sample-spa.json'
-            Set-Content -Path $spaBodyFile -Value $spaBody -Encoding utf8
-            & az rest --method PATCH `
-                --url "https://graph.microsoft.com/v1.0/applications(appId='$explorerClientId')" `
-                --headers 'Content-Type=application/json' --body "@$spaBodyFile" 2>&1 | ForEach-Object { Write-Log $_ }
-            Remove-Item $spaBodyFile -ErrorAction SilentlyContinue
-
-            # Add the delegated GeoCatalog permission (user_impersonation) and try to consent.
-            try {
-                $resourceSp = (& az ad sp show --id 'https://geocatalog.spatio.azure.com' -o json 2>$null) | ConvertFrom-Json
-                if ($resourceSp -and $resourceSp.appId) {
-                    $imp = $resourceSp.oauth2PermissionScopes | Where-Object { $_.value -eq 'user_impersonation' } | Select-Object -First 1
-                    if ($imp) {
-                        & az ad app permission add --id $explorerClientId --api $resourceSp.appId `
-                            --api-permissions "$($imp.id)=Scope" 2>&1 | ForEach-Object { Write-Log $_ }
-                        # Admin consent needs privileged rights; best-effort, users can consent at sign-in.
-                        & az ad app permission admin-consent --id $explorerClientId 2>&1 | ForEach-Object { Write-Log $_ }
-                    }
-                }
-                else {
-                    Write-Log 'NOTE: GeoCatalog service principal not found in this tenant; users will consent to the data-plane scope at first sign-in.'
-                }
-            }
-            catch {
-                Write-Log "NOTE: could not pre-wire the GeoCatalog permission (users can consent at sign-in): $($_.Exception.Message)"
-            }
-        }
-        else {
-            Write-Log 'WARNING: could not create the Entra app registration (the workstation identity likely lacks Application.ReadWrite.All). Set VITE_ENTRA_* manually in the sample .env.local.'
-        }
-    }
-    catch {
-        Write-Log "WARNING: Entra app-registration step failed (set VITE_ENTRA_* manually in the sample .env.local): $($_.Exception.Message)"
-    }
-
-    # --- Build-time config. Vite bakes VITE_* into the bundle at build, so .env.local must
-    #     exist BEFORE npm run build. No secrets are written (only the public catalog URL
-    #     and the app-registration IDs). ---
-    try {
-        $envLines = @(
-            "VITE_GEOCATALOG_URL=$geocatUri",
-            "VITE_ENTRA_TENANT_ID=$explorerTenantId",
-            "VITE_ENTRA_CLIENT_ID=$explorerClientId",
-            'VITE_GEOCATALOG_API_VERSION=2025-04-30-preview',
-            'VITE_DEV_PORT=5173'
-        )
-        Set-Content -Path (Join-Path $sampleDir '.env.local') -Value ($envLines -join "`r`n") -Encoding ascii
-        if ($explorerClientId -and $explorerTenantId) {
-            $entraConfigured = $true
-            Write-Log 'Wrote sample .env.local with GeoCatalog URL + Entra sign-in IDs.'
-        }
-        else {
-            Write-Log 'Wrote sample .env.local with GeoCatalog URL (Entra IDs left blank for manual entry).'
-        }
-    }
-    catch {
-        Write-Log "WARNING: could not write the sample .env.local: $($_.Exception.Message)"
-    }
-
-    # --- Ensure the build targets es2022. Vite's default target list includes safari14,
-    #     which makes esbuild apply a destructuring workaround that fails on maplibre-gl's
-    #     minified bundle. Overwriting vite.config.js with an es2022 target guarantees a
-    #     clean build regardless of upstream drift. ---
-    try {
-        $viteConfig = @'
-import { defineConfig } from 'vite';
-export default defineConfig({
-  server: {
-    port: parseInt(process.env.VITE_DEV_PORT) || 5173,
-    open: true,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-    },
-  },
-  esbuild: { target: 'es2022' },
-  optimizeDeps: { esbuildOptions: { target: 'es2022' } },
-  build: { target: 'es2022' },
-});
-'@
-        Set-Content -Path (Join-Path $sampleDir 'vite.config.js') -Value $viteConfig -Encoding ascii
-    }
-    catch {
-        Write-Log "WARNING: could not write the sample vite.config.js: $($_.Exception.Message)"
-    }
-
-    # --- Build the sample (npm install + npm run build -> dist/). Best-effort. ---
-    try {
-        Install-NodeIfMissing
-        Push-Location $sampleDir
-        Write-Log 'Installing sample web app dependencies (npm install)...'
-        & npm install 2>&1 | ForEach-Object { Write-Log $_ }
-        Write-Log 'Building the sample web app (npm run build)...'
-        & npm run build 2>&1 | ForEach-Object { Write-Log $_ }
-        Pop-Location
-        if (Test-Path $sampleDistDir) { Write-Log "Sample web app built to $sampleDistDir." }
-        else { Write-Log 'WARNING: sample build did not produce a dist/ folder.' }
-    }
-    catch {
-        Pop-Location -ErrorAction SilentlyContinue
-        Write-Log "WARNING: sample web app build failed: $($_.Exception.Message)"
-    }
-
-    # --- Desktop launcher to serve the built site locally on port 8080. ---
-    try {
-        $serveCmd = @"
-@echo off
-echo Starting the Planetary Computer Pro sample web app at http://localhost:8080 ...
-start "" http://localhost:8080
-cd /d "$sampleDistDir"
-python -m http.server 8080
-"@
-        Set-Content -Path (Join-Path $publicDesktop '2 - Sample Web App (local).cmd') -Value $serveCmd -Encoding ascii
-        Write-Log 'Wrote local sample-web-app launcher to the public desktop.'
-    }
-    catch {
-        Write-Log "WARNING: could not write the local launcher: $($_.Exception.Message)"
-    }
-
-    # --- Publish the built site to Azure Static Web Apps (best-effort). This replaces the
-    #     early "setting up" status page with the finished sample app. ---
-    if ($SwaDeploymentToken -and (Test-Path $sampleDistDir)) {
-        try {
-            Write-Log 'Publishing the sample web app to Azure Static Web Apps...'
-            if (Invoke-SwaDeploy $sampleDistDir) { Write-Log "Sample web app published to $WebAppUrl" }
-        }
-        catch {
-            Write-Log "WARNING: SWA publish failed (deploy manually with the SWA CLI): $($_.Exception.Message)"
-        }
-    }
-}
 
 # ------------------------------------------------------------------------------------
 # Write connection-info (no secrets) for the operator.
@@ -887,21 +637,18 @@ AI (Microsoft Foundry):
 
 Planetary Computer Pro sample web app (official Microsoft javascript-sample):
   Azure Static Web Apps URL : $WebAppUrl
-  Run locally               : double-click "2 - Sample Web App (local).cmd" (serves
-                              http://localhost:8080 from $sampleDistDir)
-  Sign-in ($(if ($entraConfigured) { 'auto-configured' } else { 'action needed' }))     : $(if ($entraConfigured) {
-      "Entra app '$('PCPro-Sample-' + $GeoCatalogName)' (clientId $explorerClientId)
-                              was created and baked into the build via .env.local. If the first
-                              sign-in shows a consent error, have an admin grant consent to the
-                              GeoCatalog (user_impersonation) delegated permission."
-    } else {
-      "the Entra app registration could not be created automatically. Create a
-                              Microsoft Entra app (SPA, redirect URIs
-                              http://localhost:8080/ and <SWA-URL>/, delegated GeoCatalog
-                              access), set VITE_ENTRA_TENANT_ID / VITE_ENTRA_CLIENT_ID in
-                              $sampleDir\.env.local, then rebuild with 'npm run build' (the
-                              GeoCatalog URL is already set)."
-    })
+  Deployed by               : GitHub Actions CI/CD (Microsoft-recommended model), not this
+                              workstation. Workflow: .github/workflows/azure-static-web-apps.yml
+  To publish content        : in your GitHub repo (Settings > Secrets and variables > Actions)
+                              add secret AZURE_STATIC_WEB_APPS_API_TOKEN (portal > the Static
+                              Web App > Manage deployment token) and repository variables
+                              VITE_GEOCATALOG_URL=$geocatUri, VITE_ENTRA_TENANT_ID,
+                              VITE_ENTRA_CLIENT_ID (Entra SPA app registration; client/tenant
+                              IDs are public), then push to main. The workflow builds
+                              pcp-web-sample/ and publishes to the URL above.
+  Entra sign-in app         : register a Microsoft Entra SPA app once (redirect URI
+                              <SWA-URL>/, delegated GeoCatalog user_impersonation) and use its
+                              client/tenant IDs as the VITE_* repository variables above.
 
 This file contains no passwords, keys, or tokens.
 "@
@@ -987,14 +734,12 @@ your own GeoTIFFs into STAC items and ingest them.
 
 ## 5. Explore in the sample web app
 Instead of the raw catalog portal, use the official Microsoft **Planetary Computer Pro
-sample web app** (the `tools/javascript-sample` that ships in this repo) — a MSAL sign-in +
-STAC browse + tile map over your GeoCatalog. Run it locally by double-clicking the desktop
-launcher **"2 - Sample Web App (local).cmd"** (serves `http://localhost:8080`), or open the
-**Azure Static Web Apps** URL from `connection-info.txt`. It signs in with your Microsoft
-Entra identity; the deployment tries to **auto-create the app registration** and bake
-`VITE_ENTRA_CLIENT_ID`/`VITE_ENTRA_TENANT_ID` into the build for you. If sign-in reports a
-config or consent error, see the sample-web-app section of `connection-info.txt` (you may
-need an admin to grant consent, or to set the IDs in the sample `.env.local` and rebuild).
+sample web app** (`pcp-web-sample/` in the deployment repo) — a MSAL sign-in + STAC browse
++ tile map over your GeoCatalog. It is deployed to **Azure Static Web Apps by GitHub
+Actions** (the Microsoft-recommended CI/CD model), not from this workstation. Open the
+**Azure Static Web Apps** URL from `connection-info.txt`. To publish/update it, configure
+the GitHub repo secret `AZURE_STATIC_WEB_APPS_API_TOKEN` and the `VITE_*` repository
+variables (see the sample-web-app section of `connection-info.txt`), then push to `main`.
 
 ---
 

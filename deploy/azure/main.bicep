@@ -41,7 +41,7 @@ param deploySampleStorage bool = true
 @description('At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation.')
 param seedSampleData bool = true
 
-@description('Build and deploy the official Microsoft Planetary Computer Pro sample web app (tools/javascript-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation.')
+@description('Provision an Azure Static Web App for the official Microsoft Planetary Computer Pro sample web app (pcp-web-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog). The resource is created empty; content is published by the repo GitHub Actions workflow (.github/workflows/azure-static-web-apps.yml) - the Microsoft-recommended CI/CD model.')
 param deployWebApp bool = true
 
 @description('Optional override for the sample web app Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value.')
@@ -165,9 +165,6 @@ var staticWebAppRegionForLocation = {
   uksouth: 'westeurope'
 }
 var effectiveStaticWebAppLocation = empty(staticWebAppLocation) ? staticWebAppRegionForLocation[location] : staticWebAppLocation
-// Legacy: base URL under this POC repo. The setup script now builds the sample directly
-// from the cloned official repo, so this is retained only for backward compatibility.
-var webAppBaseUrl = '${artifactsBaseUrl}/webapp'
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -465,23 +462,14 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         value: string(deployWebApp)
       }
       {
-        name: 'WebAppBaseUrl'
-        value: deployWebApp ? webAppBaseUrl : ''
-      }
-      {
         name: 'WebAppUrl'
         value: deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : ''
       }
     ]
-    protectedParameters: [
-      {
-        name: 'SwaDeploymentToken'
-        value: deployWebApp ? staticWebApp.listSecrets().properties.apiKey : ''
-      }
-    ]
-    // 2 hours: installs (Python/VS Code/Azure CLI/Node) + GeoCatalog seeding + the SWA
-    // publish can legitimately run 30-60+ min; a tight timeout was cutting the script off
-    // mid-way (leaving VS Code and the desktop shortcuts missing).
+    protectedParameters: []
+    // 2 hours: installs (Python/VS Code/Azure CLI) + GeoCatalog seeding can legitimately
+    // run 30-60+ min; a tight timeout was cutting the script off mid-way (leaving VS Code
+    // and the desktop shortcuts missing). The web app is published separately by GitHub Actions.
     timeoutInSeconds: 7200
   }
   dependsOn: [
@@ -623,22 +611,18 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 
 // ------------------------------------------------------------------------------------
 // Optional: Planetary Computer Pro sample web app on Azure Static Web Apps. The resource
-// is created empty; setup.ps1 builds and publishes the static files with the deployment
-// token (passed as a protected run-command parameter) so the workstation never needs RBAC
-// on this resource.
+// is provisioned empty here; content is built and published by the repo's GitHub Actions
+// workflow (.github/workflows/azure-static-web-apps.yml) using the SWA deployment token -
+// the Microsoft-recommended CI/CD model. No workstation RBAC or VM publish is involved.
 // ------------------------------------------------------------------------------------
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
   name: staticWebAppName
   location: effectiveStaticWebAppLocation
-  identity: {
-    type: 'SystemAssigned'
-  }
-  // Standard (not Free) is required: the Free tier does not support a
-  // system-assigned managed identity. Combining identity+Free makes the
-  // resource provider reject the deploy with "SkuCode 'Free' is invalid".
+  // Free tier is sufficient for GitHub Actions token-based publishing (no managed
+  // identity is required, since the workstation no longer publishes content).
   sku: {
-    name: 'Standard'
-    tier: 'Standard'
+    name: 'Free'
+    tier: 'Free'
   }
   properties: {
     allowConfigFileUpdates: true
@@ -667,6 +651,7 @@ output auroraModelDeployed bool = deployAuroraDeployment
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
 output webAppUrl string = deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : 'not-deployed'
-output webAppPrincipalId string = deployWebApp ? staticWebApp.identity.principalId : 'not-deployed'
+@description('Publish content to this Static Web App via the GitHub Actions workflow using the SWA deployment token (portal -> Static Web App -> Manage deployment token).')
+output webAppDeployHint string = deployWebApp ? 'GitHub Actions: .github/workflows/azure-static-web-apps.yml (set secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables)' : 'not-deployed'
 @description('Region the Static Web App was placed in. Co-located with the main deployment region when Static Web Apps supports it, otherwise the nearest supported region.')
 output webAppRegion string = deployWebApp ? effectiveStaticWebAppLocation : 'not-deployed'

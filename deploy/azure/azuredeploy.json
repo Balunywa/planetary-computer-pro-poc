@@ -66,7 +66,7 @@
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Build and deploy the official Microsoft Planetary Computer Pro sample web app (tools/javascript-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation."
+        "description": "Provision an Azure Static Web App for the official Microsoft Planetary Computer Pro sample web app (pcp-web-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog). The resource is created empty; content is published by the repo GitHub Actions workflow (.github/workflows/azure-static-web-apps.yml) - the Microsoft-recommended CI/CD model."
       }
     },
     "staticWebAppLocation": {
@@ -217,8 +217,7 @@
       "canadacentral": "eastus2",
       "uksouth": "westeurope"
     },
-    "effectiveStaticWebAppLocation": "[if(empty(parameters('staticWebAppLocation')), variables('staticWebAppRegionForLocation')[parameters('location')], parameters('staticWebAppLocation'))]",
-    "webAppBaseUrl": "[format('{0}/webapp', parameters('artifactsBaseUrl'))]"
+    "effectiveStaticWebAppLocation": "[if(empty(parameters('staticWebAppLocation')), variables('staticWebAppRegionForLocation')[parameters('location')], parameters('staticWebAppLocation'))]"
   },
   "resources": [
     {
@@ -552,20 +551,11 @@
             "value": "[string(parameters('deployWebApp'))]"
           },
           {
-            "name": "WebAppBaseUrl",
-            "value": "[if(parameters('deployWebApp'), variables('webAppBaseUrl'), '')]"
-          },
-          {
             "name": "WebAppUrl",
             "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').defaultHostname), '')]"
           }
         ],
-        "protectedParameters": [
-          {
-            "name": "SwaDeploymentToken",
-            "value": "[if(parameters('deployWebApp'), listSecrets(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').properties.apiKey, '')]"
-          }
-        ],
+        "protectedParameters": [],
         "timeoutInSeconds": 7200
       },
       "dependsOn": [
@@ -739,12 +729,9 @@
       "apiVersion": "2023-12-01",
       "name": "[variables('staticWebAppName')]",
       "location": "[variables('effectiveStaticWebAppLocation')]",
-      "identity": {
-        "type": "SystemAssigned"
-      },
       "sku": {
-        "name": "Standard",
-        "tier": "Standard"
+        "name": "Free",
+        "tier": "Free"
       },
       "properties": {
         "allowConfigFileUpdates": true,
@@ -823,9 +810,12 @@
       "type": "string",
       "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').defaultHostname), 'not-deployed')]"
     },
-    "webAppPrincipalId": {
+    "webAppDeployHint": {
       "type": "string",
-      "value": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01', 'full').identity.principalId, 'not-deployed')]"
+      "metadata": {
+        "description": "Publish content to this Static Web App via the GitHub Actions workflow using the SWA deployment token (portal -> Static Web App -> Manage deployment token)."
+      },
+      "value": "[if(parameters('deployWebApp'), 'GitHub Actions: .github/workflows/azure-static-web-apps.yml (set secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables)', 'not-deployed')]"
     },
     "webAppRegion": {
       "type": "string",
