@@ -161,6 +161,14 @@
             },
             "count": 1,
             "visible": "[contains(steps('components').selected, 'workstation')]"
+          },
+          {
+            "name": "seedSampleData",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Pre-load sample imagery into the GeoCatalog",
+            "defaultValue": true,
+            "toolTip": "At deploy time, headlessly create a sample Sentinel-2 collection and ingest a few scenes (using the workstation identity) so the Explorer already shows imagery on first open.",
+            "visible": "[contains(steps('components').selected, 'workstation')]"
           }
         ]
       },
@@ -229,7 +237,7 @@
                 "type": "Microsoft.Common.TextBox",
                 "label": "Aurora model asset ID (optional)",
                 "defaultValue": "",
-                "toolTip": "Registry model asset, e.g. azureml://registries/azureml/models/<Aurora-model>/versions/<n>. Leave blank to provision the workspace + endpoint only and deploy the model from the portal.",
+                "toolTip": "Registry model asset. The official storm-impact app uses azureml://registries/azureml/models/Aurora/versions/4. Leave blank to provision the workspace + endpoint only and deploy the model from the portal.",
                 "constraints": {
                   "required": false
                 }
@@ -244,6 +252,7 @@
       "geoCatalogName": "[basics('geoCatalogName')]",
       "deployWorkstation": "[contains(steps('components').selected, 'workstation')]",
       "deploySampleStorage": "[contains(steps('components').selected, 'sampleStorage')]",
+      "seedSampleData": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').seedSampleData)]",
       "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
       "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
       "adminUsername": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminUsername, 'azureuser')]",

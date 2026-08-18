@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "4561336809141477457"
+      "templateHash": "9897585913618332570"
     }
   },
   "parameters": {
@@ -53,6 +53,13 @@
       "defaultValue": true,
       "metadata": {
         "description": "Deploy a sample-data storage account and a user-assigned managed identity for the managed-identity ingestion path (bring-your-own-data scenario)."
+      }
+    },
+    "seedSampleData": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation."
       }
     },
     "adminUsername": {
@@ -150,7 +157,7 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Registry model asset ID for the Aurora managed-compute deployment (for example azureml://registries/azureml/models/<Aurora-model>/versions/<n>). Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms)."
+        "description": "Registry model asset ID for the Aurora managed-compute deployment. The official Microsoft storm-impact app uses azureml://registries/azureml/models/Aurora/versions/4. Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms)."
       }
     }
   },
@@ -166,7 +173,10 @@
     "sampleStorageName": "[toLower(format('pcpro{0}', uniqueString(resourceGroup().id)))]",
     "ingestIdentityName": "[format('{0}-ingest-identity', variables('namePrefix'))]",
     "sampleContainerName": "sample-assets",
+    "modelOutputsContainerName": "model-outputs",
     "storageBlobDataReaderRoleId": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",
+    "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+    "geoCatalogAdminRoleId": "c9c97b9c-105d-4bb5-a2a7-7d15666c2484",
     "networkNeeded": "[parameters('deployWorkstation')]",
     "openAiName": "[toLower(format('pcpro-oai-{0}', uniqueString(resourceGroup().id)))]",
     "cognitiveServicesOpenAiUserRoleId": "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
@@ -238,6 +248,18 @@
     },
     {
       "condition": "[parameters('deploySampleStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('sampleStorageName'), 'default', variables('modelOutputsContainerName'))]",
+      "properties": {
+        "publicAccess": "None"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('sampleStorageName'), 'default')]"
+      ]
+    },
+    {
+      "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
@@ -250,6 +272,38 @@
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('deploySampleStorage'), parameters('deployWorkstation'))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('workstationName'), variables('storageBlobDataContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
+        "principalId": "[if(parameters('deployWorkstation'), reference(resourceId('Microsoft.Compute/virtualMachines', variables('workstationName')), '2023-09-01', 'full').identity.principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('deployWorkstation'), parameters('seedSampleData'))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
+      "name": "[guid(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), variables('workstationName'), variables('geoCatalogAdminRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('geoCatalogAdminRoleId'))]",
+        "principalId": "[if(parameters('deployWorkstation'), reference(resourceId('Microsoft.Compute/virtualMachines', variables('workstationName')), '2023-09-01', 'full').identity.principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
       ]
     },
     {
@@ -426,12 +480,20 @@
             "value": "[parameters('location')]"
           },
           {
+            "name": "GeoCatalogUri",
+            "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
+          },
+          {
             "name": "RepoUrl",
             "value": "[parameters('officialRepoUrl')]"
           },
           {
             "name": "SampleContainerUrl",
             "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), '')]"
+          },
+          {
+            "name": "UploadContainerUrl",
+            "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('modelOutputsContainerName')), '')]"
           },
           {
             "name": "IngestIdentityObjectId",
@@ -448,16 +510,23 @@
           {
             "name": "AuroraEndpoint",
             "value": "[if(parameters('deployAuroraModel'), reference(resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName')), '2023-10-01').scoringUri, '')]"
+          },
+          {
+            "name": "SeedSampleData",
+            "value": "[string(and(parameters('deployWorkstation'), parameters('seedSampleData')))]"
           }
         ],
-        "timeoutInSeconds": 1800
+        "timeoutInSeconds": 3600
       },
       "dependsOn": [
         "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",
+        "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
+        "[extensionResourceId(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), variables('workstationName'), variables('geoCatalogAdminRoleId')))]",
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
         "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
-        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]",
+        "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('workstationName'), variables('storageBlobDataContributorRoleId')))]"
       ]
     },
     {
@@ -622,6 +691,13 @@
     "geoCatalogResourceId": {
       "type": "string",
       "value": "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]"
+    },
+    "geoCatalogUri": {
+      "type": "string",
+      "metadata": {
+        "description": "The GeoCatalog URI (catalogUri), including the platform-assigned domain hash. Use as GEOCATALOG_URL for the ingest script and Explorer."
+      },
+      "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
     },
     "geoCatalogPortalHint": {
       "type": "string",

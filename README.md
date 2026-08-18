@@ -34,13 +34,34 @@ The workstation is network-isolated and reached privately over **Azure Bastion**
 public RDP port. This repo deploys and wires the environment; the actual ingest / configure
 / visualize / GeoAI logic is Microsoft's official code, unchanged.
 
+> **Primary scenario — weather for energy / oil & gas.** This POC is aimed at the
+> **weather** use case: predicting a tropical storm's path with the **Aurora** AI weather
+> model and assessing its impact on **energy / oil & gas infrastructure** (offshore
+> platforms, refineries, pipelines, the power grid). The headline workflow is Microsoft's
+> `applications/storm_impact_assessment/hurricane_forecast_infra_impact.ipynb`
+> (storm select → ECMWF via Planetary Computer Pro → Aurora inference on a Foundry GPU →
+> model outputs to your storage → infrastructure-impact map). The workstation opens on this
+> notebook first; the optical STAC tutorial is included as a quick proof that the
+> ingest → render → visualize pipeline works.
+
 > **Scope:** this POC provisions the environment and clones Microsoft's official samples.
 > The introductory notebooks (STAC ingest + visualization of sample Sentinel-2 imagery) run
-> out of the box. The advanced Aurora storm-impact app needs the **Aurora** model on a
+> out of the box. **You do not need the Aurora weather model to test the POC end to end** —
+> deploy the GeoCatalog + analytics workstation (+ sample storage/identity, AI agent optional)
+> and run the intro notebooks (create a STAC collection → ingest sample Sentinel-2 imagery →
+> apply render/mosaic config → view it in the GeoCatalog Explorer) for a full end-to-end run.
+> Aurora is only required for the advanced Aurora storm-impact app. The advanced Aurora storm-impact app needs the **Aurora** model on a
 > Foundry **GPU** endpoint (`Standard_NC24ads_A100_v4`): select the **Aurora weather model**
-> component to provision the Foundry workspace + endpoint, then supply a model asset ID (and
-> have GPU quota + accepted marketplace terms) to deploy the model. See
+> component to provision the Foundry workspace + endpoint, then supply a model asset ID (the
+> official app uses `azureml://registries/azureml/models/Aurora/versions/4`) and have GPU
+> quota + accepted marketplace terms to deploy the model. See
 > [Where Azure AI Foundry fits](#where-azure-ai-foundry-fits).
+
+> **Already superset of the storm app's own template.** The official repo ships a minimal
+> `applications/storm_impact_assessment/deploy/azuredeploy.json` (GeoCatalog + storage + AI
+> Foundry + Aurora endpoint). This template provisions **all of that plus** the workstation,
+> networking/Bastion, managed-identity ingestion, and a pre-wired `.env`, so **don't run both** —
+> deploying this one already stands up everything the storm-impact notebook needs.
 
 ## Logical architecture
 
@@ -196,30 +217,104 @@ The workstation already has Microsoft's official repository cloned to
 Planetary Computer Pro SDK installed, and a pre-filled environment. You run Microsoft's
 notebooks unchanged; the data-plane calls use your signed-in identity.
 
+> **Pre-seeded by default.** When the workstation is deployed, the template grants its
+> managed identity the **GeoCatalog Administrator** role and, at deploy time, headlessly
+> creates a `sentinel-2-l2a-sample` collection, ingests a few Sentinel-2 scenes, and
+> applies a render + mosaic configuration — so the **Explorer already shows imagery on
+> first open**. Turn this off with the *"Pre-load sample imagery"* checkbox (portal) or
+> `seedSampleData=false`. The tutorial notebook still walks through the same flow so you
+> can build your own collections.
+
+### Where the sample data comes from
+
+The seeder does **not** copy imagery into your storage account, and your storage account is
+**not** the GeoCatalog data source. The workstation's managed identity registers **Microsoft's
+public Planetary Computer** as the ingestion source (via a short-lived SAS), then tells the
+GeoCatalog to ingest a few Sentinel-2 scenes directly from it. No image bytes flow through the
+VM — it only orchestrates the API calls. The ingested items are stored in the GeoCatalog's own
+managed storage.
+
+The optional **sample storage account** (`deploySampleStorage`) is unrelated to GeoCatalog
+seeding — it's where the **weather (storm-impact) notebook uploads its Aurora model outputs**
+(to a `model-outputs` container). The workstation's managed identity is granted **Storage
+Blob Data Contributor** on this account, so the notebook writes those outputs with managed
+identity — no account keys or SAS. The `.env` is pre-filled with `UPLOAD_CONTAINER_NAME` and
+the container URL.
+
+| | Source of sample imagery | GeoCatalog's stored copy | Deployed sample storage acct |
+|---|---|---|---|
+| **What** | MS Planetary Computer public blob | Catalog-managed storage (internal) | Your storage account |
+| **Role** | Ingestion source (read via SAS) | Where ingested items live | Weather model-outputs target |
+| **Who fills it** | Microsoft (already populated) | GeoCatalog ingestion engine | Storm-impact notebook (Aurora outputs, via MI) |
+
+```mermaid
+flowchart LR
+    PC[MS Planetary Computer<br/>public blob + STAC] -->|SAS + STAC search| VM[Workstation MI<br/>seed_geocatalog.py]
+    VM -->|register source + ingest| GC[(GeoCatalog<br/>managed storage)]
+    GC --> EXP[Explorer shows imagery]
+    SA[Your sample storage acct] -.Aurora model outputs written by storm-impact notebook.-> AUR[Weather workflow]
+```
+
+### End-to-end deploy flow
+
+```mermaid
+flowchart TD
+    A[Deploy to Azure form] --> B[ARM: GeoCatalog + VM + roles]
+    B --> C[GeoCatalog Admin role -> VM identity]
+    C --> D[runCommand: setup.ps1]
+    D --> E[Install tools + clone repo + .env]
+    D --> F[seed_geocatalog.py as MI]
+    F --> G[collection + ingest + render/mosaic]
+    E --> H[Shortcut + workspace + RunOnce]
+    H --> I[Bastion logon: VS Code auto-opens]
+    G --> J[Explorer shows imagery on first open]
+    I --> J
+```
+
 1. Open the workstation page in the portal → **Connect → Connect via Bastion**. Direct
    public RDP is blocked.
-2. On the desktop, open **connection-info.txt** for the GeoCatalog name/URI and the exact
-   file paths.
-3. Copy the **GeoCatalog URI** from the portal (your GeoCatalog → **Overview → GeoCatalog
-   URI**) and confirm it matches the pre-filled value.
-4. Open the cloned repo folder in VS Code, sign in with `az login`, and run the tutorial
-   notebook:
+2. **Double-click the desktop shortcut `1 - Start Here (open in VS Code)`.** It signs you
+   in to Azure (`az login`) if needed and opens the repo **already loaded** in VS Code with
+   `START-HERE.md` showing the guided steps — nothing to browse for or copy. (VS Code also
+   opens the workspace automatically the first time you sign in to the VM.) If you'd rather
+   do it by hand, `connection-info.txt` on the desktop has the folder path and the same
+   steps.
+3. In VS Code, follow `START-HERE.md`: it links directly to the notebooks. Sign in via
+   **Terminal → Run Task… → "Azure: Sign in (az login)"** if you skipped the shortcut.
+4. The `GEOCATALOG_URI` in the app `.env` is **pre-filled with the resource's real
+   `catalogUri`**, which the deployment reads directly off the GeoCatalog (property
+   `geoCatalog.properties.catalogUri`) and injects into the setup script — so it already
+   includes the platform-assigned hash segment
+   (`https://<name>.<hash>.<region>.geocatalog.spatio.azure.com`) and matches the portal
+   exactly. Nothing to paste. If you ever need to verify it, it's under your GeoCatalog →
+   **Overview → GeoCatalog URI** (and it's also emitted as the `geoCatalogUri` deployment
+   output). A name-only URL like `https://<name>.<region>.geocatalog.spatio.azure.com` is
+   **not** valid — the hash is generated by Azure and cannot be derived from name/region.
+5. **Run the weather workflow (the headline scenario), linked from `START-HERE.md`:**
 
    ```text
-   notebooks\GeoCatalog_Tutorial.ipynb
+   applications\storm_impact_assessment\hurricane_forecast_infra_impact.ipynb
    ```
 
-   It creates a STAC collection, registers the public Planetary Computer container as an
-   ingestion source, ingests sample Sentinel-2 scenes, and applies render + mosaic
-   configuration.
-5. Open the **Explorer** at `<GEOCATALOG_URI>/collections` to visualize the imagery.
+   It selects a storm (IBTrACS; Hurricane Helene 2024 pre-selected), pulls **ECMWF** weather
+   data via Planetary Computer Pro, runs **Aurora** hurricane-track inference on a Foundry
+   GPU endpoint, writes the model outputs to your `model-outputs` storage container (managed
+   identity — no keys), ingests results into the GeoCatalog, and maps the storm track against
+   **energy / power infrastructure** (OpenStreetMap). Its `.env` is pre-filled; you only add a
+   Foundry **Aurora GPU endpoint + token** if you didn't deploy the Aurora model here.
+6. Open the **Explorer** at `<GEOCATALOG_URI>/collections` to visualize the results (and the
+   pre-seeded sample collection).
+
+Want to see the raw ingest → render → visualize pipeline first? Run the tutorial
+`notebooks\GeoCatalog_Tutorial.ipynb` — it creates a STAC collection, registers the public
+Planetary Computer container as an ingestion source, ingests sample Sentinel-2 scenes, and
+applies render + mosaic configuration (the same pipeline the weather workflow uses to publish
+its results).
 
 Other official assets already on the workstation:
 
 - `notebooks\create-stac-items.ipynb`: build STAC items from your own rasters.
-- `applications\storm_impact_assessment\hurricane_forecast_infra_impact.ipynb`: the
-  Aurora hurricane-forecast app (needs a Foundry Aurora endpoint + GPU quota; its `.env`
-  is pre-filled with the Azure pieces this template provisioned).
+- `notebooks\GeoCatalog_Tutorial.ipynb`: minimal ingest → render → visualize pipeline demo.
 - `tools\`: STAC Forge, the MPC MCP server, partner-app integration, and more.
 
 ## Use your own data (managed-identity ingestion)

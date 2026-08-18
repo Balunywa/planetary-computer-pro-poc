@@ -38,6 +38,9 @@ param deployWorkstation bool = true
 @description('Deploy a sample-data storage account and a user-assigned managed identity for the managed-identity ingestion path (bring-your-own-data scenario).')
 param deploySampleStorage bool = true
 
+@description('At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation.')
+param seedSampleData bool = true
+
 @description('Administrator username for the workstation VM.')
 param adminUsername string = 'azureuser'
 
@@ -78,7 +81,7 @@ param deployAuroraModel bool = false
 @description('GPU VM size for the Aurora managed-compute deployment. Aurora requires an A100-class SKU; you must have quota for it in the selected region.')
 param auroraInstanceType string = 'Standard_NC24ads_A100_v4'
 
-@description('Registry model asset ID for the Aurora managed-compute deployment (for example azureml://registries/azureml/models/<Aurora-model>/versions/<n>). Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms).')
+@description('Registry model asset ID for the Aurora managed-compute deployment. The official Microsoft storm-impact app uses azureml://registries/azureml/models/Aurora/versions/4. Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms).')
 param auroraModelAssetId string = ''
 
 // ------------------------------------------------------------------------------------
@@ -99,9 +102,22 @@ var workstationNicName = '${namePrefix}-workstation-nic'
 var sampleStorageName = toLower('pcpro${uniqueString(resourceGroup().id)}')
 var ingestIdentityName = '${namePrefix}-ingest-identity'
 var sampleContainerName = 'sample-assets'
+// Container the Aurora storm-impact notebook uploads its weather model outputs to
+// (matches UPLOAD_CONTAINER_NAME in the app .env).
+var modelOutputsContainerName = 'model-outputs'
 
 // Storage Blob Data Reader — lets the ingestion managed identity read blobs for ingestion.
 var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+
+// Storage Blob Data Contributor — lets the workstation identity WRITE Aurora weather
+// model outputs to the sample storage account (the storm-impact notebook uploads its
+// forecast artifacts to the model-outputs container).
+var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+
+// GeoCatalog Administrator — GeoCatalog data-plane role (read/write/delete collections,
+// items, and configuration). Granted to the workstation identity so it can seed sample
+// data headlessly at deploy time.
+var geoCatalogAdminRoleId = 'c9c97b9c-105d-4bb5-a2a7-7d15666c2484'
 
 var networkNeeded = deployWorkstation
 
@@ -177,6 +193,16 @@ resource sampleContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
   }
 }
 
+// Destination container for the Aurora weather-forecast model outputs produced by the
+// storm-impact notebook.
+resource modelOutputsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = if (deploySampleStorage) {
+  parent: sampleBlobService
+  name: modelOutputsContainerName
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 // Grant the ingestion identity read access to the sample container so a GeoCatalog
 // managed-identity ingestion source can read the assets.
 resource blobReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySampleStorage) {
@@ -185,6 +211,31 @@ resource blobReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-0
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataReaderRoleId)
     principalId: deploySampleStorage ? ingestIdentity.properties.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant the workstation's system-assigned identity WRITE access to the sample storage
+// account so the Aurora storm-impact notebook can upload its weather model outputs to the
+// model-outputs container using managed identity (no account keys).
+resource workstationBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySampleStorage && deployWorkstation) {
+  name: guid(sampleStorage.id, workstationName, storageBlobDataContributorRoleId)
+  scope: sampleStorage
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalId: deployWorkstation ? workstation.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant the workstation's system-assigned identity the GeoCatalog Administrator data-plane
+// role so setup.ps1 can create a collection and ingest sample imagery headlessly.
+resource geoCatalogSeederRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWorkstation && seedSampleData) {
+  name: guid(geoCatalog.id, workstationName, geoCatalogAdminRoleId)
+  scope: geoCatalog
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', geoCatalogAdminRoleId)
+    principalId: deployWorkstation ? workstation.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }
 }
@@ -342,12 +393,20 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         value: location
       }
       {
+        name: 'GeoCatalogUri'
+        value: geoCatalog.properties.catalogUri
+      }
+      {
         name: 'RepoUrl'
         value: officialRepoUrl
       }
       {
         name: 'SampleContainerUrl'
         value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : ''
+      }
+      {
+        name: 'UploadContainerUrl'
+        value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${modelOutputsContainerName}' : ''
       }
       {
         name: 'IngestIdentityObjectId'
@@ -365,9 +424,17 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         name: 'AuroraEndpoint'
         value: deployAuroraModel ? auroraEndpoint.properties.scoringUri : ''
       }
+      {
+        name: 'SeedSampleData'
+        value: string(deployWorkstation && seedSampleData)
+      }
     ]
-    timeoutInSeconds: 1800
+    timeoutInSeconds: 3600
   }
+  dependsOn: [
+    geoCatalogSeederRole
+    workstationBlobContributorRole
+  ]
 }
 
 // ------------------------------------------------------------------------------------
@@ -507,6 +574,8 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 
 output geoCatalogName string = effectiveGeoCatalogName
 output geoCatalogResourceId string = geoCatalog.id
+@description('The GeoCatalog URI (catalogUri), including the platform-assigned domain hash. Use as GEOCATALOG_URL for the ingest script and Explorer.')
+output geoCatalogUri string = geoCatalog.properties.catalogUri
 @description('Open the GeoCatalog in the portal and copy the GeoCatalog URI from the Overview blade; use it as GEOCATALOG_URL for the ingest script and Explorer.')
 output geoCatalogPortalHint string = 'Portal → ${effectiveGeoCatalogName} → Overview → GeoCatalog URI'
 output workstationName string = deployWorkstation ? workstationName : 'not-deployed'
