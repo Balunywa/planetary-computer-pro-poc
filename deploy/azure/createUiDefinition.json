@@ -6,7 +6,7 @@
     "config": {
       "isWizard": false,
       "basics": {
-        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus optional components: an analytics workstation (VS Code + Python over Azure Bastion), sample-data storage, an Azure OpenAI (Microsoft Foundry) agent, and the Microsoft Aurora weather model on a GPU Foundry endpoint. The GeoCatalog is always deployed; choose the rest. [Learn more](https://github.com/Balunywa/planetary-computer-pro-poc).",
+        "description": "Deploy a Microsoft Planetary Computer Pro **GeoCatalog** plus optional components: an analytics workstation (VS Code + Python over Azure Bastion), sample-data storage, an Azure OpenAI (Microsoft Foundry) agent, the Microsoft Aurora weather model on a GPU Foundry endpoint, and the branded **StormLens** web app (Azure Static Web App). The GeoCatalog is always deployed; choose the rest. [Learn more](https://github.com/Balunywa/planetary-computer-pro-poc).",
         "location": {
           "label": "Region",
           "toolTip": "GeoCatalog is available in these regions during Preview.",
@@ -67,6 +67,9 @@
               },
               {
                 "value": "aiAgent"
+              },
+              {
+                "value": "webApp"
               }
             ],
             "constraints": {
@@ -81,6 +84,11 @@
                   "label": "Sample storage + ingestion identity",
                   "value": "sampleStorage",
                   "description": "Storage account and managed identity for the bring-your-own-data ingestion path."
+                },
+                {
+                  "label": "StormLens web app (Azure Static Web App)",
+                  "value": "webApp",
+                  "description": "Branded showcase + live GeoCatalog map explorer, deployed to a Free-tier Azure Static Web App and served locally on the workstation. The workstation publishes the content, so select it too."
                 },
                 {
                   "label": "AI agent (Azure OpenAI / Foundry)",
@@ -169,14 +177,6 @@
             "defaultValue": true,
             "toolTip": "Optional. At deploy time, headlessly create a sample Sentinel-2 collection over the Louisiana Gulf coast (Port Fourchon oil & gas hub) and ingest a few scenes using the workstation identity, so the Explorer already shows imagery on first open. Uncheck for a weather-only demo (the GeoCatalog then starts empty until the storm-impact notebook publishes results).",
             "visible": "[contains(steps('components').selected, 'workstation')]"
-          },
-          {
-            "name": "deployWebApp",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Deploy the StormLens web app",
-            "defaultValue": true,
-            "toolTip": "Optional. Deploy the branded StormLens showcase + live map explorer to Azure Static Web Apps, and serve it locally on the workstation. The site talks to your GeoCatalog with your Microsoft Entra identity, so operators do not need the raw catalog portal.",
-            "visible": "[contains(steps('components').selected, 'workstation')]"
           }
         ]
       },
@@ -261,7 +261,7 @@
       "deployWorkstation": "[contains(steps('components').selected, 'workstation')]",
       "deploySampleStorage": "[contains(steps('components').selected, 'sampleStorage')]",
       "seedSampleData": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').seedSampleData)]",
-      "deployWebApp": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').deployWebApp)]",
+      "deployWebApp": "[and(contains(steps('components').selected, 'webApp'), contains(steps('components').selected, 'workstation'))]",
       "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
       "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
       "adminUsername": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminUsername, 'azureuser')]",
