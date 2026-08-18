@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StormLens — Weather intelligence for energy on Planetary Computer Pro</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="container">
+      <a class="brand" href="index.html">
+        <span class="logo">🛰️</span>
+        <span>StormLens<small>Weather intelligence for energy</small></span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="active">🏠 Home</a>
+        <a href="weather.html">🌀 Weather Workflow</a>
+        <a href="explorer.html">🗺️ Live Explorer</a>
+        <a href="architecture.html">🏗️ Architecture</a>
+        <a href="get-started.html">🚀 Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="container">
+      <span class="eyebrow">Microsoft Planetary Computer Pro · Aurora AI · Azure AI Foundry</span>
+      <h1>Forecast the storm.<br /><span class="grad">Protect the infrastructure.</span></h1>
+      <p class="lead">
+        StormLens is a turnkey weather-intelligence solution for <strong>energy and oil &amp; gas</strong>
+        operators. It predicts a tropical storm's path with the <strong>Aurora</strong> AI weather model,
+        pulls open weather &amp; imagery through <strong>Microsoft Planetary Computer Pro</strong>, and maps
+        the impact on offshore platforms, refineries, pipelines, and the power grid — all in your own
+        Azure tenant, governed by your identity.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="explorer.html">🗺️ Open the live map explorer</a>
+        <a class="btn btn-ghost" href="get-started.html">🚀 Deploy it in your subscription</a>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <div class="stats">
+        <div class="stat"><div class="num">4h–10d</div><div class="lbl">Forecast horizon</div></div>
+        <div class="stat"><div class="num">1</div><div class="lbl">Governed data plane (STAC)</div></div>
+        <div class="stat"><div class="num">MI</div><div class="lbl">Keyless, managed-identity auth</div></div>
+        <div class="stat"><div class="num">1-click</div><div class="lbl">Deploy to Azure</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="section-head">
+        <p class="section-title">Why this stack</p>
+        <h2>Open geospatial data + a foundation weather model, in your tenant</h2>
+        <p>No more emailing GRIB files or screenshotting a public portal. One governed catalog, one identity model, from raw feed to the operator map.</p>
+      </div>
+      <div class="grid cols-4">
+        <div class="card"><div class="ico">🗄️</div><h3>One catalog</h3><p>Planetary Computer Pro (GeoCatalog) stores, indexes, and serves imagery &amp; weather via the open <a href="https://stacspec.org/">STAC</a> standard.</p></div>
+        <div class="card"><div class="ico">🌀</div><h3>Aurora AI</h3><p>Microsoft's foundation weather model runs hurricane-track inference on an Azure AI Foundry GPU endpoint.</p></div>
+        <div class="card"><div class="ico">⚡</div><h3>Infrastructure impact</h3><p>Storm tracks are intersected with energy / power assets (OpenStreetMap) to rank what's in the path.</p></div>
+        <div class="card"><div class="ico">🔒</div><h3>Governed by default</h3><p>Microsoft Entra ID + managed identity everywhere — no account keys, no public RDP, private Bastion access.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="section-head">
+        <p class="section-title">The workflow</p>
+        <h2>From storm feed to operator decision</h2>
+        <p>The headline workflow is Microsoft's official <code>hurricane_forecast_infra_impact</code> notebook — StormLens wraps it in a branded UI and a live map.</p>
+      </div>
+      <div class="flow">
+        <div class="node"><div class="ico">🌪️</div><b>Storm select</b><span>IBTrACS / active feeds</span></div>
+        <div class="node"><div class="ico">📥</div><b>ECMWF data</b><span>via Planetary Computer Pro</span></div>
+        <div class="node"><div class="ico">🧠</div><b>Aurora inference</b><span>Foundry GPU endpoint</span></div>
+        <div class="node"><div class="ico">🗂️</div><b>Publish to catalog</b><span>STAC + model outputs</span></div>
+        <div class="node"><div class="ico">🗺️</div><b>Impact map</b><span>assets in the path</span></div>
+      </div>
+      <p style="margin-top:16px"><a class="btn btn-ghost" href="weather.html">See the weather workflow in detail →</a></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="callout">
+        <strong>What this is.</strong> A capabilities showcase and working front end for the weather scenario
+        on Microsoft Planetary Computer Pro. The data and models are Microsoft's official
+        <a href="https://github.com/Azure/microsoft-planetary-computer-pro">samples</a>, unchanged; StormLens
+        adds the one-click Azure landing zone, a branded site, and a custom map so operators never have to
+        live in the raw catalog portal.
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div>StormLens · a POC on <a href="https://azure.microsoft.com/products/planetary-computer-pro">Microsoft Planetary Computer Pro</a></div>
+      <div><span class="badge pill-good">● Runs in your Azure tenant</span></div>
+    </div>
+  </footer>
+</body>
+</html>

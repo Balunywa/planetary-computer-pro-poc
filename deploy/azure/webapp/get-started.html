@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StormLens — Get Started</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="container">
+      <a class="brand" href="index.html"><span class="logo">🛰️</span><span>StormLens<small>Weather intelligence for energy</small></span></a>
+      <div class="nav-links">
+        <a href="index.html">🏠 Home</a>
+        <a href="weather.html">🌀 Weather Workflow</a>
+        <a href="explorer.html">🗺️ Live Explorer</a>
+        <a href="architecture.html">🏗️ Architecture</a>
+        <a href="get-started.html" class="active">🚀 Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="container">
+      <span class="eyebrow">One click, then explore</span>
+      <h1><span class="grad">Deploy StormLens</span> in your subscription</h1>
+      <p class="lead">Everything is provisioned and pre-wired by a single Azure deployment. You connect over Bastion, open VS Code (already loaded), and the site talks to your catalog.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <div class="section-head"><p class="section-title">Deploy</p><h2>Stand up the environment</h2></div>
+      <div class="steps">
+        <div class="step"><div class="n"></div><div><h4>Click “Deploy to Azure”</h4><p>Pick your components (GeoCatalog always; workstation, sample storage, AI agent, Aurora, and the web app are optional) and a supported region.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Connect over Bastion</h4><p>Open the workstation → <b>Connect via Bastion</b>. There is no public RDP port.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Open “Start Here”</h4><p>Double-click the desktop shortcut — VS Code opens the repo pre-loaded, signed in, with <code>START-HERE.md</code> guiding you.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Run the weather workflow</h4><p>Open the hurricane forecast notebook (its <code>.env</code> is pre-filled) and run it top to bottom.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Explore in StormLens</h4><p>Open this site’s <a href="explorer.html">Live Explorer</a>, sign in, and view your collections on the map.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="section-head"><p class="section-title">Run the web app</p><h2>Two ways to host StormLens</h2></div>
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="ico">🖥️</div><h3>Locally on the workstation</h3>
+          <p>The deployment drops the site on the VM and starts a local server. Or run it yourself:</p>
+          <pre>cd C:\StormLens\webapp
+python -m http.server 8080
+# open http://localhost:8080</pre>
+        </div>
+        <div class="card">
+          <div class="ico">🌐</div><h3>Azure Static Web Apps</h3>
+          <p>Select the <b>web app</b> component and the template provisions a Static Web App and publishes these files to a shareable URL — the same experience as this page.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="callout">
+        <strong>Sign-in setup.</strong> The Live Explorer uses Microsoft Entra ID (MSAL) from the browser, so it
+        needs an app registration (client ID + redirect URI). The deployment can create one for you and write it
+        into <code>assets/app-config.js</code>; otherwise paste your own client/tenant IDs there.
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div>StormLens · get started</div>
+      <div><a href="https://github.com/Azure/microsoft-planetary-computer-pro">Official samples ↗</a></div>
+    </div>
+  </footer>
+</body>
+</html>

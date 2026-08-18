@@ -46,7 +46,19 @@ param(
     [string] $AuroraEndpoint = '',
 
     [Parameter(Mandatory = $false)]
-    [string] $SeedSampleData = 'false'
+    [string] $SeedSampleData = 'false',
+
+    [Parameter(Mandatory = $false)]
+    [string] $DeployWebApp = 'false',
+
+    [Parameter(Mandatory = $false)]
+    [string] $WebAppBaseUrl = '',
+
+    [Parameter(Mandatory = $false)]
+    [string] $WebAppUrl = '',
+
+    [Parameter(Mandatory = $false)]
+    [string] $SwaDeploymentToken = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -310,8 +322,12 @@ PARAMS = {"api-version": API_VERSION}
 MPC_APP_ID = "https://geocatalog.spatio.azure.com"
 PC_COLLECTION = "sentinel-2-l2a"
 COLLECTION_ID = "sentinel-2-l2a-sample"
-BBOX_AOI = [-22.455626, 63.834083, -22.395201, 63.880750]
-DATE_RANGE = "2024-02-04/2024-02-11"
+# AOI over Port Fourchon / the Louisiana Gulf coast - a major U.S. oil & gas hub and a
+# hurricane-exposed area - so the smoke-test imagery is relevant to the weather scenario.
+BBOX_AOI = [-90.30, 28.95, -90.05, 29.20]
+# Wider window + a cloud-cover filter (below) to improve the odds of a clear Gulf scene.
+DATE_RANGE = "2024-01-01/2024-05-31"
+MAX_CLOUD_COVER = 30
 MAX_ITEMS = 3
 
 # Authenticate with the VM's system-assigned managed identity.
@@ -442,8 +458,16 @@ items_endpoint = f"{geocatalog_url}/stac/collections/{COLLECTION_ID}/items"
 operation_ids = []
 try:
     catalog = Client.open("https://planetarycomputer.microsoft.com/api/stac/v1")
-    search = catalog.search(collections=[PC_COLLECTION], bbox=BBOX_AOI, datetime=DATE_RANGE)
-    items = list(search.item_collection())[:MAX_ITEMS]
+    search = catalog.search(
+        collections=[PC_COLLECTION],
+        bbox=BBOX_AOI,
+        datetime=DATE_RANGE,
+        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
+    )
+    # Prefer the least-cloudy scenes so the Gulf coast actually renders.
+    all_items = list(search.item_collection())
+    all_items.sort(key=lambda it: it.properties.get("eo:cloud_cover", 100))
+    items = all_items[:MAX_ITEMS]
 except Exception as exc:
     print(f"Planetary Computer search failed: {exc}")
     items = []
@@ -538,14 +562,88 @@ else {
 }
 
 # ------------------------------------------------------------------------------------
+# StormLens web app: download the static site, inject the real GeoCatalog URL, serve it
+# locally on the workstation, and (if a Static Web Apps deployment token was passed as a
+# protected parameter) publish it to Azure Static Web Apps. All best-effort.
+# ------------------------------------------------------------------------------------
+$webAppOn = ($DeployWebApp -match '^(true|1|yes)$')
+$stormLensDir = 'C:\StormLens\webapp'
+if ($webAppOn -and $WebAppBaseUrl) {
+    try {
+        Write-Log 'Setting up the StormLens web app...'
+        New-Item -ItemType Directory -Path (Join-Path $stormLensDir 'assets') -Force | Out-Null
+        $webFiles = @(
+            'index.html', 'weather.html', 'explorer.html', 'architecture.html', 'get-started.html',
+            'staticwebapp.config.json', 'assets/styles.css', 'assets/app-config.js', 'assets/explorer.js'
+        )
+        $base = $WebAppBaseUrl.TrimEnd('/')
+        foreach ($rel in $webFiles) {
+            $dest = Join-Path $stormLensDir ($rel -replace '/', '\')
+            try {
+                Invoke-WebRequest -Uri "$base/$rel" -OutFile $dest -UseBasicParsing
+            }
+            catch {
+                Write-Log "WARNING: could not download web file '$rel': $($_.Exception.Message)"
+            }
+        }
+
+        # Inject the real GeoCatalog URL into the runtime config (no secrets written).
+        $cfgPath = Join-Path $stormLensDir 'assets\app-config.js'
+        if (Test-Path $cfgPath) {
+            $cfg = Get-Content -Raw $cfgPath
+            $cfg = $cfg -replace 'geoCatalogUrl:\s*"[^"]*"', ('geoCatalogUrl: "' + $geocatUri + '"')
+            Set-Content -Path $cfgPath -Value $cfg -Encoding UTF8
+            Write-Log 'Injected GeoCatalog URL into StormLens app-config.js.'
+        }
+
+        # Desktop launcher to serve the site locally.
+        $serveCmd = @"
+@echo off
+echo Starting StormLens at http://localhost:8080 ...
+start "" http://localhost:8080
+cd /d "$stormLensDir"
+python -m http.server 8080
+"@
+        Set-Content -Path (Join-Path $publicDesktop '2 - StormLens (local).cmd') -Value $serveCmd -Encoding ascii
+        Write-Log 'Wrote local StormLens launcher to the public desktop.'
+    }
+    catch {
+        Write-Log "WARNING: StormLens local setup failed: $($_.Exception.Message)"
+    }
+
+    # Publish to Azure Static Web Apps using the deployment token (best-effort).
+    if ($SwaDeploymentToken) {
+        try {
+            Write-Log 'Publishing StormLens to Azure Static Web Apps...'
+            $npm = Get-Command npm -ErrorAction SilentlyContinue
+            if (-not $npm) {
+                Write-Log 'Installing Node.js LTS for the SWA CLI...'
+                & winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 |
+                    ForEach-Object { Write-Log $_ }
+                $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                            [System.Environment]::GetEnvironmentVariable('Path', 'User')
+            }
+            & npm install -g @azure/static-web-apps-cli 2>&1 | ForEach-Object { Write-Log $_ }
+            & swa deploy "$stormLensDir" --deployment-token $SwaDeploymentToken --env production 2>&1 |
+                ForEach-Object { Write-Log $_ }
+            Write-Log "StormLens published to $WebAppUrl"
+        }
+        catch {
+            Write-Log "WARNING: SWA publish failed (deploy manually with the SWA CLI): $($_.Exception.Message)"
+        }
+    }
+}
+
+# ------------------------------------------------------------------------------------
 # Write connection-info (no secrets) for the operator.
 # ------------------------------------------------------------------------------------
 if ($seededOn) {
     $seedNote = @"
 NOTE - a sample collection '$seedCollectionId' was pre-loaded at deploy time (Sentinel-2
-       imagery + render/mosaic config), so the Explorer should already show data on first
-       open. If it looks empty, ingestion may still be finishing - re-check in a few
-       minutes (see C:\ProvisionLogs\setup.log). Run the tutorial notebook to build your own.
+       imagery over the Louisiana Gulf coast / Port Fourchon oil & gas hub + render/mosaic
+       config), so the Explorer should already show data on first open. If it looks empty,
+       ingestion may still be finishing - re-check in a few minutes (see
+       C:\ProvisionLogs\setup.log). Run the tutorial notebook to build your own.
 "@
 }
 else {
@@ -601,6 +699,15 @@ AI (Microsoft Foundry):
   (also set as machine env vars FOUNDRY_ENDPOINT / FOUNDRY_DEPLOYMENT)
   Aurora GPU endpoint     : $AuroraEndpoint
 
+StormLens web app (branded showcase + live map explorer over the GeoCatalog):
+  Azure Static Web Apps URL : $WebAppUrl
+  Run locally               : double-click "2 - StormLens (local).cmd" (serves
+                              http://localhost:8080 from $stormLensDir)
+  Sign-in note              : the Live Explorer uses Microsoft Entra (MSAL); set the
+                              app-registration clientId/tenantId in
+                              $stormLensDir\assets\app-config.js (GeoCatalog URL is
+                              already injected).
+
 This file contains no passwords, keys, or tokens.
 "@
 Set-Content -Path (Join-Path $publicDesktop 'connection-info.txt') -Value $connInfo
@@ -629,10 +736,11 @@ $codeExe = @(
 # --- START-HERE.md (guided page shown inside VS Code) --------------------------------
 if ($seededOn) {
     $mdSeedNote = @'
-> **Pipeline already verified:** a small sample collection `sentinel-2-l2a-sample` was
-> pre-loaded at deploy time, so the GeoCatalog Explorer already shows data on first open —
-> proof that ingest → render → visualize works before you run the weather workflow. If it
-> looks empty, ingestion may still be finishing — re-check in a few minutes.
+> **Pipeline already verified:** a small sample collection `sentinel-2-l2a-sample` over the
+> **Louisiana Gulf coast (Port Fourchon oil & gas hub)** was pre-loaded at deploy time, so the
+> GeoCatalog Explorer already shows data on first open — proof that ingest → render → visualize
+> works before you run the weather workflow. If it looks empty, ingestion may still be finishing
+> — re-check in a few minutes.
 '@
 }
 else {
@@ -681,6 +789,14 @@ same pipeline the weather workflow uses to publish its results.
 ## 4. Bring your own rasters
 Open **[notebooks/create-stac-items.ipynb](notebooks/create-stac-items.ipynb)** to turn
 your own GeoTIFFs into STAC items and ingest them.
+
+## 5. Explore in StormLens (branded web app)
+Instead of the raw catalog portal, use the **StormLens** web app — a branded showcase plus a
+live map explorer over your GeoCatalog. Run it locally by double-clicking the desktop
+launcher **"2 - StormLens (local).cmd"** (serves `http://localhost:8080`), or open the
+**Azure Static Web Apps** URL from `connection-info.txt`. The Live Explorer signs in with
+your Microsoft Entra identity; set the app-registration `clientId`/`tenantId` in
+`C:\StormLens\webapp\assets\app-config.js` (the GeoCatalog URL is already filled in).
 
 ---
 

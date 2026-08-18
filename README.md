@@ -317,6 +317,31 @@ Other official assets already on the workstation:
 - `notebooks\GeoCatalog_Tutorial.ipynb`: minimal ingest → render → visualize pipeline demo.
 - `tools\`: STAC Forge, the MPC MCP server, partner-app integration, and more.
 
+## StormLens web app (branded front-end)
+
+Operators do not have to use the raw GeoCatalog portal. The deployment also ships a small
+branded web app — **StormLens** — with a marketing-style showcase (home / weather workflow /
+architecture / get-started pages) plus a **live map explorer** that signs in with your
+Microsoft Entra identity, lists your GeoCatalog collections, and draws item footprints and
+thumbnails on a MapLibre map. It is a no-build static site (CDN scripts + a runtime
+`app-config.js`), so the exact same files run two ways:
+
+- **Option A — run locally on the workstation.** `setup.ps1` downloads the site to
+  `C:\StormLens\webapp`, injects your real GeoCatalog URL into `assets\app-config.js`, and
+  drops a **"2 - StormLens (local).cmd"** launcher on the desktop that serves it at
+  `http://localhost:8080`.
+- **Option B — Azure Static Web Apps.** The template provisions a **Free-tier Static Web
+  App**; `setup.ps1` publishes the site to it with the deployment token (passed as a
+  *protected* Run Command parameter, so the workstation never needs RBAC on the resource).
+  The public URL is in the `webAppUrl` deployment output and in `connection-info.txt`.
+
+Both modes are on by default and controlled by the **Deploy the StormLens web app** toggle
+in the portal form (or the `deployWebApp` parameter). One manual step remains: the Live
+Explorer signs in with **MSAL**, so create a Microsoft Entra **app registration** (SPA
+redirect for your local/SWA URL, delegated access to the GeoCatalog) and paste its
+`clientId`/`tenantId` into `C:\StormLens\webapp\assets\app-config.js` (the GeoCatalog URL is
+already filled in). The showcase pages work without sign-in; only the live map needs it.
+
 ## Use your own data (managed-identity ingestion)
 
 When you deploy the sample storage component, the template also creates a user-assigned
@@ -343,6 +368,7 @@ the managed-identity ingestion path the official notebooks use. To ingest your o
 | `deploy/azure/main.bicep` | Bicep source that provisions the GeoCatalog, optional workstation (VNet/NSG/Bastion), and optional sample storage + ingestion identity |
 | `deploy/azure/azuredeploy.json` | Compiled ARM template behind the **Deploy to Azure** button |
 | `deploy/azure/createUiDefinition.json` | Portal form for the one-click deployment (component selection + credentials) |
+| `deploy/azure/webapp/` | The **StormLens** branded web app — showcase pages + a live GeoCatalog map explorer (no-build static site for local hosting or Azure Static Web Apps) |
 | `deploy/azure/setup.ps1` | Run by an Azure VM Run Command that installs Python, Azure CLI, Git, and VS Code, clones the official Microsoft repo, installs its dependencies + the PC Pro SDK, and pre-wires the environment |
 | `deploy/azure/requirements.txt` | Base Python packages the workstation installs so the official notebooks run out of the box |
 | `deploy/azure/teardown.sh` | Deletes the resource group and everything in it |

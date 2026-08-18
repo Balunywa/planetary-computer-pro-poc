@@ -167,7 +167,15 @@
             "type": "Microsoft.Common.CheckBox",
             "label": "Pre-load sample imagery into the GeoCatalog",
             "defaultValue": true,
-            "toolTip": "At deploy time, headlessly create a sample Sentinel-2 collection and ingest a few scenes (using the workstation identity) so the Explorer already shows imagery on first open.",
+            "toolTip": "Optional. At deploy time, headlessly create a sample Sentinel-2 collection over the Louisiana Gulf coast (Port Fourchon oil & gas hub) and ingest a few scenes using the workstation identity, so the Explorer already shows imagery on first open. Uncheck for a weather-only demo (the GeoCatalog then starts empty until the storm-impact notebook publishes results).",
+            "visible": "[contains(steps('components').selected, 'workstation')]"
+          },
+          {
+            "name": "deployWebApp",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Deploy the StormLens web app",
+            "defaultValue": true,
+            "toolTip": "Optional. Deploy the branded StormLens showcase + live map explorer to Azure Static Web Apps, and serve it locally on the workstation. The site talks to your GeoCatalog with your Microsoft Entra identity, so operators do not need the raw catalog portal.",
             "visible": "[contains(steps('components').selected, 'workstation')]"
           }
         ]
@@ -253,6 +261,7 @@
       "deployWorkstation": "[contains(steps('components').selected, 'workstation')]",
       "deploySampleStorage": "[contains(steps('components').selected, 'sampleStorage')]",
       "seedSampleData": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').seedSampleData)]",
+      "deployWebApp": "[and(contains(steps('components').selected, 'workstation'), steps('workstationConfig').deployWebApp)]",
       "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
       "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
       "adminUsername": "[if(contains(steps('components').selected, 'workstation'), steps('workstationConfig').adminUsername, 'azureuser')]",

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StormLens — Weather Workflow</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="container">
+      <a class="brand" href="index.html"><span class="logo">🛰️</span><span>StormLens<small>Weather intelligence for energy</small></span></a>
+      <div class="nav-links">
+        <a href="index.html">🏠 Home</a>
+        <a href="weather.html" class="active">🌀 Weather Workflow</a>
+        <a href="explorer.html">🗺️ Live Explorer</a>
+        <a href="architecture.html">🏗️ Architecture</a>
+        <a href="get-started.html">🚀 Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="container">
+      <span class="eyebrow">Aurora hurricane forecast + infrastructure impact</span>
+      <h1><span class="grad">Hurricane path prediction</span><br />for energy operators</h1>
+      <p class="lead">
+        The headline scenario runs Microsoft's official
+        <code>applications/storm_impact_assessment/hurricane_forecast_infra_impact.ipynb</code>,
+        pre-wired to the Azure resources this solution deploys. Aurora predicts the track; StormLens shows
+        which assets are at risk.
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <div class="section-head">
+        <p class="section-title">Seven steps</p>
+        <h2>How a forecast is produced</h2>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="n"></div><div><h4>Storm selection</h4><p>Pick any historical storm from IBTrACS (Hurricane Helene 2024 is pre-selected) or hook an active feed.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>ECMWF data download</h4><p>Retrieve HRES weather data through the Planetary Computer Pro STAC API.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Aurora batch preparation</h4><p>Format the atmospheric variables into the Aurora model's input batch.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Aurora inference</h4><p>Run hurricane-track prediction on the Aurora model hosted on an Azure AI Foundry GPU endpoint (A100).</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Track visualization</h4><p>Compare predicted vs. observed paths; write model outputs to your <code>model-outputs</code> storage container with managed identity.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Infrastructure analysis</h4><p>Intersect the storm swath with power / energy assets from OpenStreetMap to rank what is in the path.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Publish &amp; explore</h4><p>Ingest results into the GeoCatalog and view them on the branded StormLens map.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="grid cols-3">
+        <div class="card"><div class="ico">🌐</div><h3>Data sources</h3><p>IBTrACS / HURDAT storm tracks · ECMWF HRES weather (via MPC) · OpenStreetMap power infrastructure.</p></div>
+        <div class="card"><div class="ico">📦</div><h3>Model outputs</h3><p>Forecast artifacts are written to your storage account's <code>model-outputs</code> container — keyless, via the workstation's managed identity.</p></div>
+        <div class="card"><div class="ico">🛢️</div><h3>Oil &amp; gas relevance</h3><p>Rank offshore platforms, refineries, pipelines, and grid assets by storm exposure for evacuation and shut-in decisions.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="callout">
+        <strong>Prerequisite for live forecasts:</strong> the Aurora model on a Foundry <strong>GPU</strong> endpoint
+        (<code>Standard_NC24ads_A100_v4</code>) with quota + accepted marketplace terms. The rest of the
+        solution — catalog, workstation, storage, this site — runs without it, and the
+        <a href="explorer.html">Live Explorer</a> works against any collection in your catalog.
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div>StormLens · weather workflow powered by Microsoft Aurora</div>
+      <div><a href="get-started.html">Deploy it →</a></div>
+    </div>
+  </footer>
+</body>
+</html>

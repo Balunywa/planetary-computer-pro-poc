@@ -41,6 +41,9 @@ param deploySampleStorage bool = true
 @description('At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation.')
 param seedSampleData bool = true
 
+@description('Deploy the StormLens web app (a branded showcase + live map explorer over the GeoCatalog) to Azure Static Web Apps, and also serve it locally on the workstation.')
+param deployWebApp bool = true
+
 @description('Administrator username for the workstation VM.')
 param adminUsername string = 'azureuser'
 
@@ -136,6 +139,11 @@ var auroraDeploymentName = 'aurora'
 // The GPU model deployment only runs when a model asset ID is supplied (it needs GPU
 // quota + accepted marketplace terms); otherwise just the workspace + endpoint deploy.
 var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
+
+// StormLens web app on Azure Static Web Apps.
+var staticWebAppName = 'pcpro-stormlens-${amlSuffix}'
+// Where setup.ps1 downloads the StormLens static files from (this POC repo's webapp folder).
+var webAppBaseUrl = '${artifactsBaseUrl}/webapp'
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -428,6 +436,24 @@ resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09
         name: 'SeedSampleData'
         value: string(deployWorkstation && seedSampleData)
       }
+      {
+        name: 'DeployWebApp'
+        value: string(deployWebApp)
+      }
+      {
+        name: 'WebAppBaseUrl'
+        value: deployWebApp ? webAppBaseUrl : ''
+      }
+      {
+        name: 'WebAppUrl'
+        value: deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : ''
+      }
+    ]
+    protectedParameters: [
+      {
+        name: 'SwaDeploymentToken'
+        value: deployWebApp ? staticWebApp.listSecrets().properties.apiKey : ''
+      }
     ]
     timeoutInSeconds: 3600
   }
@@ -569,10 +595,26 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 }
 
 // ------------------------------------------------------------------------------------
+// Optional: StormLens web app on Azure Static Web Apps. The resource is created empty;
+// setup.ps1 publishes the static files with the deployment token (passed as a protected
+// run-command parameter) so the workstation never needs RBAC on this resource.
+// ------------------------------------------------------------------------------------
+resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
+  name: staticWebAppName
+  location: location
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
+  properties: {
+    allowConfigFileUpdates: true
+    stagingEnvironmentPolicy: 'Enabled'
+  }
+}
+
+// ------------------------------------------------------------------------------------
 // Outputs
 // ------------------------------------------------------------------------------------
-
-output geoCatalogName string = effectiveGeoCatalogName
 output geoCatalogResourceId string = geoCatalog.id
 @description('The GeoCatalog URI (catalogUri), including the platform-assigned domain hash. Use as GEOCATALOG_URL for the ingest script and Explorer.')
 output geoCatalogUri string = geoCatalog.properties.catalogUri
@@ -590,3 +632,4 @@ output auroraEndpoint string = deployAuroraModel ? auroraEndpointName : 'not-dep
 output auroraModelDeployed bool = deployAuroraDeployment
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
+output webAppUrl string = deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : 'not-deployed'
