@@ -124,6 +124,15 @@ export function RiskPage() {
                       </td>
                     </tr>
                   ))}
+                  {rows.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                        {assets.length === 0
+                          ? "No assets yet — add data from the Operations Overview to populate the risk register."
+                          : "No assets match the current search or filter."}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

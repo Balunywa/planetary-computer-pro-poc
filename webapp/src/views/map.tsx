@@ -6,7 +6,7 @@ import { AppShell } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { AssetDetailPanel } from "@/components/ops/AssetDetailPanel";
 import { RiskBadge } from "@/components/ops/RiskBadge";
-import { useOpsBase } from "@/components/ops/ops-nav";
+import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { layersQuery, useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { ASSET_TYPE_LABEL, RISK_ORDER } from "@/lib/format";
 import type { AssetType, RiskLevel } from "@/lib/domain/types";
@@ -169,7 +169,7 @@ export function MapPage() {
         </div>
 
         <div className="relative min-w-0 flex-1">
-          {event && (
+          {event ? (
             <OpsMap
               className="h-full w-full"
               assets={filtered}
@@ -179,6 +179,27 @@ export function MapPage() {
               selectedId={selected}
               onSelect={setSelected}
             />
+          ) : (
+            <div className="grid h-full place-items-center p-6 text-center">
+              <div className="max-w-sm">
+                <h2 className="text-sm font-semibold">
+                  {assets.length === 0 ? "No data to map yet" : "No active weather event"}
+                </h2>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                  {assets.length === 0
+                    ? "Add your assets and geospatial layers to see them on the live map."
+                    : "When the weather provider reports a system in the operating region, its track, wind field and forecast cone appear here over your assets."}
+                </p>
+                {assets.length === 0 && (
+                  <OpsLink
+                    to="/"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+                  >
+                    Add data from the Operations Overview
+                  </OpsLink>
+                )}
+              </div>
+            </div>
           )}
         </div>
 

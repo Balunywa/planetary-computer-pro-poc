@@ -122,9 +122,9 @@ export function AppShell({
         <div className="border-t p-3 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="size-1.5 rounded-full bg-risk-monitor" />
-            Tenant dataset
+            Tenant deployment
           </div>
-          <div className="mt-1">Forecast refreshed 4 min ago</div>
+          <div className="mt-1">Data reflects the current forecast cycle</div>
         </div>
       </aside>
 

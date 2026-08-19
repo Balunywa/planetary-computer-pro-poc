@@ -320,22 +320,32 @@ export function OverviewPage() {
                   <div className="label-xs mb-2 flex items-center gap-1.5">
                     <Sparkles className="size-3.5 text-primary" /> Operational summary
                   </div>
-                  <p className="text-xs leading-relaxed">
-                    {event?.name} is forecast to reach the operating area within 48 hours.{" "}
-                    <strong>{metrics.insideCone} facilities</strong> sit inside the projected corridor and{" "}
-                    <strong>{metrics.exposed} assets</strong> carry elevated risk or higher.{" "}
-                    <strong>{breaches.length} configured thresholds</strong> are breached this cycle, with first
-                    onset in {metrics.firstImpactHours ?? "—"} hours.
-                  </p>
-                  {event?.cycleShift && (
-                    <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                      {event.cycleShift.summary}
+                  {event ? (
+                    <>
+                      <p className="text-xs leading-relaxed">
+                        <strong>{event.name}</strong> is the active system for the current forecast cycle.{" "}
+                        <strong>{metrics.insideCone} facilities</strong> sit inside the projected corridor and{" "}
+                        <strong>{metrics.exposed} assets</strong> carry elevated risk or higher.{" "}
+                        <strong>{breaches.length} configured thresholds</strong> are breached this cycle
+                        {metrics.firstImpactHours !== null ? `, with first onset in ${metrics.firstImpactHours} hours` : ""}.
+                      </p>
+                      {event.cycleShift && (
+                        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                          {event.cycleShift.summary}
+                        </p>
+                      )}
+                      <div className="mt-2 text-[10px] text-muted-foreground">
+                        Grounded in the {event.cycleId} forecast cycle, asset register, threshold rules and risk
+                        model.
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      No active weather event in the current forecast cycle. When the weather provider reports a
+                      system in the operating region, a grounded summary of exposed facilities and breached
+                      thresholds appears here.
                     </p>
                   )}
-                  <div className="mt-2 text-[10px] text-muted-foreground">
-                    Grounded in the {event?.cycleId ?? "current"} forecast cycle, asset register, threshold rules
-                    and risk model.
-                  </div>
                 </div>
 
                 <div className="p-4">
@@ -422,6 +432,11 @@ export function OverviewPage() {
                         </div>
                       </li>
                     ))}
+                    {openAlerts.length === 0 && (
+                      <li className="px-4 py-6 text-center text-[11px] text-muted-foreground">
+                        No active alerts.
+                      </li>
+                    )}
                   </ul>
                 </div>
 

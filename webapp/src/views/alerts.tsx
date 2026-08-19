@@ -23,13 +23,18 @@ export function AlertsPage() {
   const baseAlerts = useQuery(alertsQuery(base)).data ?? [];
   const assets = useQuery(assetsQuery(base)).data ?? [];
   const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
-  const { risks } = useOpsSnapshot(base, 120);
+  const { risks, event } = useOpsSnapshot(base, 120);
   const [localStatus, setLocalStatus] = useState<Record<string, OpsAlert["status"]>>({});
 
   // Threshold breaches become first-class alerts, so the feed reflects the
   // limits operators configured rather than a fixed list.
   const derived: OpsAlert[] = useMemo(() => {
     const nameOf = (id: string) => assets.find((a) => a.id === id)?.name ?? id;
+    // Breaches are evaluated against the current forecast cycle; there is no
+    // separate "raised at" time, so we attribute them to the cycle's timestamp
+    // rather than inventing one.
+    const cycleIso = event?.updatedAtIso ?? new Date().toISOString();
+    const cycleId = event?.id ?? "current-cycle";
     // Cap each rule to its most urgent facilities so one breached limit across
     // 40 wells doesn't bury every other alert in the feed.
     const perRule = new Map<string, number>();
@@ -49,13 +54,13 @@ export function AlertsPage() {
           detail: `${METRIC_LABEL[b.metric]} ${b.observed}${METRIC_UNIT[b.metric]} against a configured limit of ${b.comparator === "gte" ? "≥" : "≤"} ${b.threshold}${METRIC_UNIT[b.metric]}${b.hoursToImpact !== null ? `, onset in ${b.hoursToImpact} h` : ""}. ${b.action}`,
           severity: b.severity,
           assetId: b.assetId,
-          eventId: "AL072026",
+          eventId: cycleId,
           status: localStatus[id] ?? "open",
           owner: b.owner,
-          createdAtIso: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+          createdAtIso: cycleIso,
         } satisfies OpsAlert;
       });
-  }, [rules, assets, risks, localStatus]);
+  }, [rules, assets, risks, event, localStatus]);
 
   const alerts = useMemo(() => [...derived, ...baseAlerts], [derived, baseAlerts]);
   const [severity, setSeverity] = useState<AlertSeverity | "all">("all");
@@ -162,6 +167,12 @@ export function AlertsPage() {
                 </li>
               );
             })}
+            {rows.length === 0 && (
+              <li className="px-4 py-10 text-center text-xs text-muted-foreground">
+                No alerts. Threshold breaches for the current forecast cycle appear here as assets and rules are
+                configured.
+              </li>
+            )}
           </ul>
         </div>
       </div>
