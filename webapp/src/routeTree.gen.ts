@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AlertsRouteImport } from './routes/alerts'
-import { Route as ArchitectureRouteImport } from './routes/architecture'
 import { Route as AssetsRouteImport } from './routes/assets'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CopilotRouteImport } from './routes/copilot'
@@ -21,8 +20,6 @@ import { Route as EventsRouteImport } from './routes/events'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as PostureRouteImport } from './routes/posture'
 import { Route as RiskRouteImport } from './routes/risk'
-import { Route as SecurityRouteImport } from './routes/security'
-import { Route as SolutionRouteImport } from './routes/solution'
 import { Route as ThresholdsRouteImport } from './routes/thresholds'
 import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as AuthCallbackRouteImport } from './routes/auth_.callback'
@@ -63,11 +60,6 @@ const AlertsRoute = AlertsRouteImport.update({
   path: '/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ArchitectureRoute = ArchitectureRouteImport.update({
-  id: '/architecture',
-  path: '/architecture',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AssetsRoute = AssetsRouteImport.update({
   id: '/assets',
   path: '/assets',
@@ -106,16 +98,6 @@ const PostureRoute = PostureRouteImport.update({
 const RiskRoute = RiskRouteImport.update({
   id: '/risk',
   path: '/risk',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SecurityRoute = SecurityRouteImport.update({
-  id: '/security',
-  path: '/security',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SolutionRoute = SolutionRouteImport.update({
-  id: '/solution',
-  path: '/solution',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThresholdsRoute = ThresholdsRouteImport.update({
@@ -250,7 +232,6 @@ const AuthenticatedAppTimelineRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
-  '/architecture': typeof ArchitectureRoute
   '/assets': typeof AssetsRoute
   '/auth': typeof AuthRoute
   '/copilot': typeof CopilotRoute
@@ -259,8 +240,6 @@ export interface FileRoutesByFullPath {
   '/map': typeof MapRoute
   '/posture': typeof PostureRoute
   '/risk': typeof RiskRoute
-  '/security': typeof SecurityRoute
-  '/solution': typeof SolutionRoute
   '/thresholds': typeof ThresholdsRoute
   '/timeline': typeof TimelineRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -290,7 +269,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
-  '/architecture': typeof ArchitectureRoute
   '/assets': typeof AssetsRoute
   '/auth': typeof AuthRoute
   '/copilot': typeof CopilotRoute
@@ -299,8 +277,6 @@ export interface FileRoutesByTo {
   '/map': typeof MapRoute
   '/posture': typeof PostureRoute
   '/risk': typeof RiskRoute
-  '/security': typeof SecurityRoute
-  '/solution': typeof SolutionRoute
   '/thresholds': typeof ThresholdsRoute
   '/timeline': typeof TimelineRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -332,7 +308,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/alerts': typeof AlertsRoute
-  '/architecture': typeof ArchitectureRoute
   '/assets': typeof AssetsRoute
   '/auth': typeof AuthRoute
   '/copilot': typeof CopilotRoute
@@ -341,8 +316,6 @@ export interface FileRoutesById {
   '/map': typeof MapRoute
   '/posture': typeof PostureRoute
   '/risk': typeof RiskRoute
-  '/security': typeof SecurityRoute
-  '/solution': typeof SolutionRoute
   '/thresholds': typeof ThresholdsRoute
   '/timeline': typeof TimelineRoute
   '/auth_/callback': typeof AuthCallbackRoute
@@ -374,7 +347,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/alerts'
-    | '/architecture'
     | '/assets'
     | '/auth'
     | '/copilot'
@@ -383,8 +355,6 @@ export interface FileRouteTypes {
     | '/map'
     | '/posture'
     | '/risk'
-    | '/security'
-    | '/solution'
     | '/thresholds'
     | '/timeline'
     | '/auth/callback'
@@ -414,7 +384,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/alerts'
-    | '/architecture'
     | '/assets'
     | '/auth'
     | '/copilot'
@@ -423,8 +392,6 @@ export interface FileRouteTypes {
     | '/map'
     | '/posture'
     | '/risk'
-    | '/security'
-    | '/solution'
     | '/thresholds'
     | '/timeline'
     | '/auth/callback'
@@ -455,7 +422,6 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/alerts'
-    | '/architecture'
     | '/assets'
     | '/auth'
     | '/copilot'
@@ -464,8 +430,6 @@ export interface FileRouteTypes {
     | '/map'
     | '/posture'
     | '/risk'
-    | '/security'
-    | '/solution'
     | '/thresholds'
     | '/timeline'
     | '/auth_/callback'
@@ -497,7 +461,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AlertsRoute: typeof AlertsRoute
-  ArchitectureRoute: typeof ArchitectureRoute
   AssetsRoute: typeof AssetsRoute
   AuthRoute: typeof AuthRoute
   CopilotRoute: typeof CopilotRoute
@@ -506,8 +469,6 @@ export interface RootRouteChildren {
   MapRoute: typeof MapRoute
   PostureRoute: typeof PostureRoute
   RiskRoute: typeof RiskRoute
-  SecurityRoute: typeof SecurityRoute
-  SolutionRoute: typeof SolutionRoute
   ThresholdsRoute: typeof ThresholdsRoute
   TimelineRoute: typeof TimelineRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
@@ -545,13 +506,6 @@ declare module '@tanstack/react-router' {
       path: '/alerts'
       fullPath: '/alerts'
       preLoaderRoute: typeof AlertsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/architecture': {
-      id: '/architecture'
-      path: '/architecture'
-      fullPath: '/architecture'
-      preLoaderRoute: typeof ArchitectureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assets': {
@@ -608,20 +562,6 @@ declare module '@tanstack/react-router' {
       path: '/risk'
       fullPath: '/risk'
       preLoaderRoute: typeof RiskRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/security': {
-      id: '/security'
-      path: '/security'
-      fullPath: '/security'
-      preLoaderRoute: typeof SecurityRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/solution': {
-      id: '/solution'
-      path: '/solution'
-      fullPath: '/solution'
-      preLoaderRoute: typeof SolutionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/thresholds': {
@@ -837,7 +777,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AlertsRoute: AlertsRoute,
-  ArchitectureRoute: ArchitectureRoute,
   AssetsRoute: AssetsRoute,
   AuthRoute: AuthRoute,
   CopilotRoute: CopilotRoute,
@@ -846,8 +785,6 @@ const rootRouteChildren: RootRouteChildren = {
   MapRoute: MapRoute,
   PostureRoute: PostureRoute,
   RiskRoute: RiskRoute,
-  SecurityRoute: SecurityRoute,
-  SolutionRoute: SolutionRoute,
   ThresholdsRoute: ThresholdsRoute,
   TimelineRoute: TimelineRoute,
   AuthCallbackRoute: AuthCallbackRoute,
