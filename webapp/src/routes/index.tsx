@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Activity, Gauge, Layers, ShieldCheck } from "lucide-react";
 
 import { Card, Section, SiteChrome } from "@/components/site/SiteChrome";
+import { LandingConsole } from "@/components/site/LandingConsole";
+import { ScoreProof } from "@/components/site/ScoreProof";
 
 const TITLE = "Weather & Asset Risk Intelligence | Azure Accelerator";
 const DESC =
@@ -22,50 +24,62 @@ export const Route = createFileRoute("/")({
 });
 
 const STATS = [
-  ["186", "assets in the demo estate"],
   ["120 h", "forecast scrubbing window"],
   ["4", "scored risk factors per asset"],
   ["T-120 → T-24", "response gate board"],
+  ["Your tenant", "deployed into your Azure subscription"],
 ];
 
 function LandingPage() {
   return (
     <SiteChrome>
       <section className="border-b bg-surface">
-        <div className="mx-auto max-w-6xl px-5 py-20">
-          <p className="text-[11px] font-medium tracking-[0.18em] text-primary uppercase">
-            Oil &amp; gas industry accelerator on Microsoft Azure
-          </p>
-          <h1 className="mt-4 max-w-4xl text-4xl leading-[1.1] font-semibold tracking-tight sm:text-5xl">
-            Which assets the weather hits, how hard, and when.
-          </h1>
-          <p className="mt-5 max-w-2xl text-base text-muted-foreground">
-            Weather and asset impact intelligence for critical infrastructure. The accelerator joins severe weather forecasts
-            to your platforms, wells, pipelines and terminals, and turns them into an explainable exposure
-            score, a response posture board and an alert queue your storm calls can actually run on.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              to="/demo"
-              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Launch demo, no sign-in
-            </Link>
-            <Link to="/auth" className="rounded-sm border px-5 py-2.5 text-sm hover:bg-accent">
-              Request deployment
-            </Link>
+        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:py-16">
+          <div>
+            <p className="text-[11px] font-medium tracking-[0.18em] text-primary uppercase">
+              Oil &amp; gas industry accelerator on Microsoft Azure
+            </p>
+            <h1 className="mt-4 text-4xl leading-[1.05] font-semibold tracking-tight sm:text-5xl">
+              Which assets the weather hits, how hard, and when.
+            </h1>
+            <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
+              Weather and asset impact intelligence for critical infrastructure. The accelerator joins severe
+              weather forecasts to your platforms, wells, pipelines and terminals, and turns them into an
+              explainable exposure score, a response posture board and an alert queue your storm calls can
+              actually run on.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                to="/demo"
+                className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Launch demo, no sign-in
+              </Link>
+              <Link to="/auth" className="rounded-sm border px-5 py-2.5 text-sm hover:bg-accent">
+                Request deployment
+              </Link>
+            </div>
+
+            <dl className="mt-9 grid gap-x-6 gap-y-5 border-t pt-6 sm:grid-cols-2">
+              {STATS.map(([value, label]) => (
+                <div key={label as string}>
+                  <dt className="num text-lg font-semibold tracking-tight">{value}</dt>
+                  <dd className="mt-0.5 text-[11px] text-muted-foreground">{label}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
-          <dl className="mt-14 grid gap-6 border-t pt-8 sm:grid-cols-4">
-            {STATS.map(([value, label]) => (
-              <div key={label as string}>
-                <dt className="text-2xl font-semibold tracking-tight tabular-nums">{value}</dt>
-                <dd className="mt-1 text-[11px] text-muted-foreground">{label}</dd>
-              </div>
-            ))}
-          </dl>
+          <LandingConsole />
         </div>
       </section>
+
+      <Section
+        title="Every score opens up"
+        description="Live from the sample estate. This is the highest-exposure asset right now, with each factor's contribution to the number and the lead-time gates it triggers."
+      >
+        <ScoreProof />
+      </Section>
 
       <Section
         title="Built for the storm call, not the weather app"
