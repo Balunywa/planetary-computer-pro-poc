@@ -1,9 +1,8 @@
 // =====================================================================================
 // Microsoft Planetary Computer Pro — Rapid POC
-// Provisions a GeoCatalog and (optionally) an analytics workstation and sample-data
-// storage so you can prove the end-to-end ingest → configure → visualize flow.
-//
-// Mirrors the component-selectable, Bastion-isolated pattern of oracle-to-postgres-poc.
+// Provisions a GeoCatalog and (optionally) a web app (Azure App Service, Node), sample-
+// data storage, an Azure OpenAI (Foundry) agent, and the Aurora weather model so you can
+// prove the end-to-end ingest → configure → visualize flow.
 // =====================================================================================
 
 targetScope = 'resourceGroup'
@@ -95,9 +94,9 @@ var modelOutputsContainerName = 'model-outputs'
 // Storage Blob Data Reader — lets the ingestion managed identity read blobs for ingestion.
 var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 
-// Storage Blob Data Contributor — lets the workstation identity WRITE Aurora weather
-// model outputs to the sample storage account (the storm-impact notebook uploads its
-// forecast artifacts to the model-outputs container).
+// Storage Blob Data Contributor — lets the web app's managed identity WRITE Aurora
+// weather model outputs to the sample storage account (the storm-impact workflow uploads
+// its forecast artifacts to the model-outputs container).
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 
 // GeoCatalog Administrator — GeoCatalog data-plane role (read/write/delete collections,
