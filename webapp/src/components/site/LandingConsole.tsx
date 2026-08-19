@@ -163,8 +163,7 @@ export function LandingConsole({ className }: { className?: string }) {
           {ranked.map(({ risk, asset }) => (
             <li
               key={risk.assetId}
-              className="hover:bg-accent/40 flex cursor-default items-center gap-3 px-3 py-1.5 text-[12px]"
-              onMouseEnter={() => setSelected(risk.assetId)}
+              className="flex items-center gap-3 px-3 py-1.5 text-[12px]"
             >
               <span
                 className="size-1.5 shrink-0 rounded-full"
