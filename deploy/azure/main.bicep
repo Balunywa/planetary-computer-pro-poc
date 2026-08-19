@@ -32,60 +32,20 @@ param geoCatalogName string = ''
 ])
 param geoCatalogTier string = 'Basic'
 
-@description('Deploy the analytics workstation (Windows VM + VS Code + Python + Azure CLI) reached privately over Azure Bastion. It runs the sample ingestion script.')
-param deployWorkstation bool = true
-
 @description('Deploy a sample-data storage account and a user-assigned managed identity for the managed-identity ingestion path (bring-your-own-data scenario).')
 param deploySampleStorage bool = true
 
-@description('At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation.')
-param seedSampleData bool = true
-
-@description('Provision an Azure Static Web App for the official Microsoft Planetary Computer Pro sample web app (pcp-web-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog). The resource is created empty; content is published by the repo GitHub Actions workflow (.github/workflows/azure-static-web-apps.yml) - the Microsoft-recommended CI/CD model.')
+@description('Deploy the web app on an Azure App Service (Linux, Node). The site is created configured for Node; application code is published separately (CI/CD or `az webapp up`) and its managed identity is granted the GeoCatalog / storage / Foundry data-plane roles.')
 param deployWebApp bool = true
 
-@description('Optional override for the sample web app Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value.')
-@allowed([
-  ''
-  'westus2'
-  'centralus'
-  'eastus2'
-  'westeurope'
-  'eastasia'
-])
-param staticWebAppLocation string = ''
+@description('App Service plan SKU for the web app (e.g. F1, B1, P0v3, P1v3).')
+param appServiceSku string = 'B1'
 
-@description('GitHub repository (https://github.com/<owner>/<repo>) that hosts the sample web app (pcp-web-sample) and the deploy workflow. The deploy button wires this repo to the Static Web App CI/CD.')
-param githubRepositoryUrl string = 'https://github.com/Balunywa/planetary-computer-pro-poc'
-
-@description('Branch the Static Web App builds and deploys from.')
-param githubBranch string = 'main'
-
-@description('GitHub personal access token (classic) with "repo" + "workflow" scopes. Used ONCE at deploy time to wire the Static Web App deployment token into the repo as a GitHub secret and to set the build variables + trigger the first CI/CD run. It is not stored on any resource. Leave blank to skip auto-wiring (you then add the token/variables in GitHub manually).')
-@secure()
-param githubToken string = ''
-
-@description('Microsoft Entra SPA app registration (client) ID the sample web app uses for MSAL sign-in. This is a public identifier, not a secret. Required for sign-in to work.')
+@description('Microsoft Entra SPA app registration (client) ID the web app uses for MSAL sign-in. This is a public identifier, not a secret.')
 param entraClientId string = ''
 
 @description('Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret.')
 param entraTenantId string = ''
-
-@description('Administrator username for the workstation VM.')
-param adminUsername string = 'azureuser'
-
-@description('Administrator password for the workstation VM (used for RDP over the Azure Bastion tunnel). Leave empty when not deploying the workstation.')
-@secure()
-param adminPassword string = ''
-
-@description('Size of the workstation VM.')
-param vmSize string = 'Standard_D4s_v3'
-
-@description('Base URL (raw) that hosts setup.ps1. Point this at your fork if you change the provisioning script.')
-param artifactsBaseUrl string = 'https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure'
-
-@description('Git repository the workstation clones — the official Microsoft Planetary Computer Pro samples/notebooks/apps/tools. Point this at a fork if desired.')
-param officialRepoUrl string = 'https://github.com/Azure/microsoft-planetary-computer-pro.git'
 
 @description('Deploy an Azure OpenAI (Microsoft Foundry) account + model deployment for agentic / reasoning GeoAI scenarios against the GeoCatalog.')
 param deployAiAgent bool = true
@@ -123,12 +83,8 @@ var namePrefix = 'pcpro'
 // here in the template — uniqueString() is an ARM function and is not available in
 // createUiDefinition.json, so name generation must live in the template.
 var effectiveGeoCatalogName = empty(geoCatalogName) ? toLower('pcpro${uniqueString(resourceGroup().id)}') : geoCatalogName
-var vnetName = '${namePrefix}-vnet'
-var nsgName = '${namePrefix}-workstation-nsg'
-var bastionName = '${namePrefix}-bastion'
-var bastionPipName = '${namePrefix}-bastion-pip'
-var workstationName = '${namePrefix}-workstation'
-var workstationNicName = '${namePrefix}-workstation-nic'
+var appServicePlanName = '${namePrefix}-plan-${amlSuffix}'
+var webAppName = 'pcpro-web-${amlSuffix}'
 var sampleStorageName = toLower('pcpro${uniqueString(resourceGroup().id)}')
 var ingestIdentityName = '${namePrefix}-ingest-identity'
 var sampleContainerName = 'sample-assets'
@@ -145,11 +101,9 @@ var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 
 // GeoCatalog Administrator — GeoCatalog data-plane role (read/write/delete collections,
-// items, and configuration). Granted to the workstation identity so it can seed sample
-// data headlessly at deploy time.
+// items, and configuration). Granted to the web app's managed identity so the backend
+// API routes can create collections and ingest items.
 var geoCatalogAdminRoleId = 'c9c97b9c-105d-4bb5-a2a7-7d15666c2484'
-
-var networkNeeded = deployWorkstation
 
 // Azure OpenAI (Foundry) agent.
 var openAiName = toLower('pcpro-oai-${uniqueString(resourceGroup().id)}')
@@ -166,29 +120,6 @@ var auroraDeploymentName = 'aurora'
 // The GPU model deployment only runs when a model asset ID is supplied (it needs GPU
 // quota + accepted marketplace terms); otherwise just the workspace + endpoint deploy.
 var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
-
-// Planetary Computer Pro sample web app on Azure Static Web Apps.
-var staticWebAppName = 'pcpro-sample-${amlSuffix}'
-// Static Web Apps isn't offered in every region the rest of the stack supports, so when
-// no explicit override is given we co-locate it with the main deployment 'location' -
-// using the same region when SWA supports it (e.g. westeurope), otherwise the nearest
-// supported SWA region. Content is served globally from the CDN either way.
-var staticWebAppRegionForLocation = {
-  eastus: 'eastus2'
-  northcentralus: 'centralus'
-  westeurope: 'westeurope'
-  canadacentral: 'eastus2'
-  uksouth: 'westeurope'
-}
-var effectiveStaticWebAppLocation = empty(staticWebAppLocation) ? staticWebAppRegionForLocation[location] : staticWebAppLocation
-
-// GitHub CI/CD wiring: when a PAT is supplied we connect the repo to the Static Web App
-// (which creates the deployment-token GitHub secret automatically) and run a deployment
-// script to set the build variables + trigger the first workflow run.
-var wireGithub = deployWebApp && !empty(githubToken)
-var githubRepoPath = replace(replace(githubRepositoryUrl, 'https://github.com/', ''), '.git', '')
-var githubOwner = split(githubRepoPath, '/')[0]
-var githubRepo = split(githubRepoPath, '/')[1]
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -268,238 +199,29 @@ resource blobReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
-// Grant the workstation's system-assigned identity WRITE access to the sample storage
-// account so the Aurora storm-impact notebook can upload its weather model outputs to the
-// model-outputs container using managed identity (no account keys).
-resource workstationBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySampleStorage && deployWorkstation) {
-  name: guid(sampleStorage.id, workstationName, storageBlobDataContributorRoleId)
+// Grant the web app's managed identity WRITE access to the sample storage account so the
+// backend API routes can upload Aurora weather-model outputs to the model-outputs
+// container using managed identity (no account keys).
+resource appBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySampleStorage && deployWebApp) {
+  name: guid(sampleStorage.id, webAppName, storageBlobDataContributorRoleId)
   scope: sampleStorage
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
-    principalId: deployWorkstation ? workstation.identity.principalId : ''
+    principalId: deployWebApp ? webApp.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }
 }
 
-// Grant the workstation's system-assigned identity the GeoCatalog Administrator data-plane
-// role so setup.ps1 can create a collection and ingest sample imagery headlessly.
-resource geoCatalogSeederRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWorkstation && seedSampleData) {
-  name: guid(geoCatalog.id, workstationName, geoCatalogAdminRoleId)
+// Grant the web app's managed identity the GeoCatalog Administrator data-plane role so the
+// backend API routes can create collections and ingest items on behalf of the app.
+resource appGeoCatalogAdminRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
+  name: guid(geoCatalog.id, webAppName, geoCatalogAdminRoleId)
   scope: geoCatalog
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', geoCatalogAdminRoleId)
-    principalId: deployWorkstation ? workstation.identity.principalId : ''
+    principalId: deployWebApp ? webApp.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }
-}
-
-// ------------------------------------------------------------------------------------
-// Optional: network-isolated analytics workstation (RDP only, via Azure Bastion)
-// ------------------------------------------------------------------------------------
-
-resource nsg 'Microsoft.Network/networkSecurityGroups@2023-11-01' = if (networkNeeded) {
-  name: nsgName
-  location: location
-  properties: {
-    // No inbound rules: the workstation is reachable only through Azure Bastion.
-    securityRules: []
-  }
-}
-
-resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = if (networkNeeded) {
-  name: vnetName
-  location: location
-  properties: {
-    addressSpace: {
-      addressPrefixes: [
-        '10.20.0.0/16'
-      ]
-    }
-    subnets: [
-      {
-        name: 'workstation-subnet'
-        properties: {
-          addressPrefix: '10.20.1.0/24'
-          networkSecurityGroup: {
-            id: nsg.id
-          }
-        }
-      }
-      {
-        name: 'AzureBastionSubnet'
-        properties: {
-          addressPrefix: '10.20.2.0/26'
-        }
-      }
-    ]
-  }
-}
-
-resource bastionPip 'Microsoft.Network/publicIPAddresses@2023-11-01' = if (networkNeeded) {
-  name: bastionPipName
-  location: location
-  sku: {
-    name: 'Standard'
-  }
-  properties: {
-    publicIPAllocationMethod: 'Static'
-  }
-}
-
-resource bastion 'Microsoft.Network/bastionHosts@2023-11-01' = if (networkNeeded) {
-  name: bastionName
-  location: location
-  sku: {
-    name: 'Standard'
-  }
-  properties: {
-    enableTunneling: true
-    ipConfigurations: [
-      {
-        name: 'bastion-ipconfig'
-        properties: {
-          subnet: {
-            id: networkNeeded ? '${vnet.id}/subnets/AzureBastionSubnet' : ''
-          }
-          publicIPAddress: {
-            id: bastionPip.id
-          }
-        }
-      }
-    ]
-  }
-}
-
-resource workstationNic 'Microsoft.Network/networkInterfaces@2023-11-01' = if (deployWorkstation) {
-  name: workstationNicName
-  location: location
-  properties: {
-    ipConfigurations: [
-      {
-        name: 'ipconfig1'
-        properties: {
-          privateIPAllocationMethod: 'Dynamic'
-          subnet: {
-            id: networkNeeded ? '${vnet.id}/subnets/workstation-subnet' : ''
-          }
-        }
-      }
-    ]
-  }
-}
-
-resource workstation 'Microsoft.Compute/virtualMachines@2023-09-01' = if (deployWorkstation) {
-  name: workstationName
-  location: location
-  identity: {
-    type: 'SystemAssigned'
-  }
-  properties: {
-    hardwareProfile: {
-      vmSize: vmSize
-    }
-    osProfile: {
-      computerName: 'pcpro-ws'
-      adminUsername: adminUsername
-      adminPassword: adminPassword
-    }
-    storageProfile: {
-      imageReference: {
-        publisher: 'MicrosoftWindowsServer'
-        offer: 'WindowsServer'
-        sku: '2022-datacenter-azure-edition'
-        version: 'latest'
-      }
-      osDisk: {
-        createOption: 'FromImage'
-        managedDisk: {
-          storageAccountType: 'Premium_LRS'
-        }
-      }
-    }
-    networkProfile: {
-      networkInterfaces: [
-        {
-          id: workstationNic.id
-        }
-      ]
-    }
-  }
-}
-
-// Provision the workstation software (VS Code + Python + Azure CLI + sample script).
-resource workstationSetup 'Microsoft.Compute/virtualMachines/runCommands@2023-09-01' = if (deployWorkstation) {
-  parent: workstation
-  name: 'provision-workstation'
-  location: location
-  properties: {
-    source: {
-      scriptUri: '${artifactsBaseUrl}/setup.ps1'
-    }
-    parameters: [
-      {
-        name: 'GeoCatalogName'
-        value: effectiveGeoCatalogName
-      }
-      {
-        name: 'GeoCatalogRegion'
-        value: location
-      }
-      {
-        name: 'GeoCatalogUri'
-        value: geoCatalog.properties.catalogUri
-      }
-      {
-        name: 'RepoUrl'
-        value: officialRepoUrl
-      }
-      {
-        name: 'SampleContainerUrl'
-        value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : ''
-      }
-      {
-        name: 'UploadContainerUrl'
-        value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${modelOutputsContainerName}' : ''
-      }
-      {
-        name: 'IngestIdentityObjectId'
-        value: deploySampleStorage ? ingestIdentity.properties.principalId : ''
-      }
-      {
-        name: 'FoundryEndpoint'
-        value: deployAiAgent ? openAi.properties.endpoint : ''
-      }
-      {
-        name: 'FoundryDeployment'
-        value: deployAiAgent ? openAiDeploymentName : ''
-      }
-      {
-        name: 'AuroraEndpoint'
-        value: deployAuroraModel ? auroraEndpoint.properties.scoringUri : ''
-      }
-      {
-        name: 'SeedSampleData'
-        value: string(deployWorkstation && seedSampleData)
-      }
-      {
-        name: 'DeployWebApp'
-        value: string(deployWebApp)
-      }
-      {
-        name: 'WebAppUrl'
-        value: deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : ''
-      }
-    ]
-    protectedParameters: []
-    // 2 hours: installs (Python/VS Code/Azure CLI) + GeoCatalog seeding can legitimately
-    // run 30-60+ min; a tight timeout was cutting the script off mid-way (leaving VS Code
-    // and the desktop shortcuts missing). The web app is published separately by GitHub Actions.
-    timeoutInSeconds: 7200
-  }
-  dependsOn: [
-    geoCatalogSeederRole
-    workstationBlobContributorRole
-  ]
 }
 
 // ------------------------------------------------------------------------------------
@@ -536,13 +258,13 @@ resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024
   }
 }
 
-// Grant the workstation's managed identity key-less access to Azure OpenAI.
-resource openAiWorkstationRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAiAgent && deployWorkstation) {
-  name: guid(openAi.id, workstationName, cognitiveServicesOpenAiUserRoleId)
+// Grant the web app's managed identity key-less access to Azure OpenAI (Foundry).
+resource openAiWebAppRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAiAgent && deployWebApp) {
+  name: guid(openAi.id, webAppName, cognitiveServicesOpenAiUserRoleId)
   scope: openAi
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
-    principalId: deployWorkstation ? workstation.identity.principalId : ''
+    principalId: deployWebApp ? webApp.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }
 }
@@ -634,134 +356,93 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 }
 
 // ------------------------------------------------------------------------------------
-// Optional: Planetary Computer Pro sample web app on Azure Static Web Apps.
-// When a GitHub PAT (githubToken) is supplied, the resource is wired to the repo:
-// Azure creates the deployment-token GitHub secret automatically (named to match the
-// committed workflow) so no manual token copying is needed. Workflow generation is
-// skipped because the repo already ships .github/workflows/azure-static-web-apps.yml
-// (which injects the VITE_* build config). Without a PAT, the SWA is created empty and
-// you wire the token/variables in GitHub yourself.
+// Web app: Azure App Service (Linux, Node) hosting the Planetary Computer Pro web app.
+// The site is created configured for Node 22; application code is published separately
+// (CI/CD or `az webapp up`), which Oryx builds (npm install + npm run build) and starts
+// with `node server.mjs`. The site's system-assigned managed identity is granted the
+// GeoCatalog / storage / Foundry data-plane roles above so the backend API routes call
+// your Azure services with managed identity (no keys).
 // ------------------------------------------------------------------------------------
-resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = if (deployWebApp) {
-  name: staticWebAppName
-  location: effectiveStaticWebAppLocation
-  // Free tier is sufficient for GitHub Actions token-based publishing.
+resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = if (deployWebApp) {
+  name: appServicePlanName
+  location: location
+  kind: 'linux'
   sku: {
-    name: 'Free'
-    tier: 'Free'
+    name: appServiceSku
   }
-  properties: wireGithub ? {
-    repositoryUrl: githubRepositoryUrl
-    branch: githubBranch
-    repositoryToken: githubToken
-    allowConfigFileUpdates: true
-    stagingEnvironmentPolicy: 'Enabled'
-    buildProperties: {
-      appLocation: 'pcp-web-sample'
-      outputLocation: 'dist'
-      skipGithubActionWorkflowGeneration: true
-      githubActionSecretNameOverride: 'AZURE_STATIC_WEB_APPS_API_TOKEN'
-    }
-  } : {
-    allowConfigFileUpdates: true
-    stagingEnvironmentPolicy: 'Enabled'
+  properties: {
+    reserved: true
   }
 }
 
-// ------------------------------------------------------------------------------------
-// CI/CD wiring init: set the GitHub Actions repository variables the build needs
-// (GeoCatalog URL + Entra sign-in IDs - all public, no secrets) and trigger the first
-// workflow run. The deployment token itself was wired as a GitHub secret by the Static
-// Web App above. Best-effort: any GitHub API hiccup is logged but never fails the deploy.
-// ------------------------------------------------------------------------------------
-resource wireCicd 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (wireGithub) {
-  name: 'wire-swa-cicd-${amlSuffix}'
+resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
+  name: webAppName
   location: location
-  kind: 'AzureCLI'
-  properties: {
-    azCliVersion: '2.61.0'
-    retentionInterval: 'PT1H'
-    timeout: 'PT15M'
-    cleanupPreference: 'OnSuccess'
-    environmentVariables: [
-      {
-        name: 'GH_TOKEN'
-        secureValue: githubToken
-      }
-      {
-        name: 'GH_OWNER'
-        value: githubOwner
-      }
-      {
-        name: 'GH_REPO'
-        value: githubRepo
-      }
-      {
-        name: 'GH_BRANCH'
-        value: githubBranch
-      }
-      {
-        name: 'WORKFLOW_FILE'
-        value: 'azure-static-web-apps.yml'
-      }
-      {
-        name: 'VITE_GEOCATALOG_URL'
-        value: geoCatalog.properties.catalogUri
-      }
-      {
-        name: 'VITE_ENTRA_TENANT_ID'
-        value: entraTenantId
-      }
-      {
-        name: 'VITE_ENTRA_CLIENT_ID'
-        value: entraClientId
-      }
-      {
-        name: 'VITE_GEOCATALOG_API_VERSION'
-        value: '2025-04-30-preview'
-      }
-    ]
-    scriptContent: '''
-      set +e
-      api="https://api.github.com/repos/$GH_OWNER/$GH_REPO"
-      hdr_auth="Authorization: Bearer $GH_TOKEN"
-      hdr_accept="Accept: application/vnd.github+json"
-      hdr_ver="X-GitHub-Api-Version: 2022-11-28"
-
-      setvar () {
-        vname="$1"; vval="$2"
-        # Try update first; if the variable does not exist yet (404), create it.
-        code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
-          -H "$hdr_auth" -H "$hdr_accept" -H "$hdr_ver" \
-          "$api/actions/variables/$vname" \
-          -d "$(printf '{"name":"%s","value":"%s"}' "$vname" "$vval")")
-        if [ "$code" != "204" ]; then
-          curl -s -o /dev/null -X POST \
-            -H "$hdr_auth" -H "$hdr_accept" -H "$hdr_ver" \
-            "$api/actions/variables" \
-            -d "$(printf '{"name":"%s","value":"%s"}' "$vname" "$vval")"
-        fi
-        echo "set variable $vname (update http=$code)"
-      }
-
-      setvar VITE_GEOCATALOG_URL "$VITE_GEOCATALOG_URL"
-      setvar VITE_ENTRA_TENANT_ID "$VITE_ENTRA_TENANT_ID"
-      setvar VITE_ENTRA_CLIENT_ID "$VITE_ENTRA_CLIENT_ID"
-      setvar VITE_GEOCATALOG_API_VERSION "$VITE_GEOCATALOG_API_VERSION"
-
-      echo "Triggering workflow $WORKFLOW_FILE on $GH_BRANCH..."
-      curl -s -o /dev/null -w "workflow_dispatch http=%{http_code}\n" -X POST \
-        -H "$hdr_auth" -H "$hdr_accept" -H "$hdr_ver" \
-        "$api/actions/workflows/$WORKFLOW_FILE/dispatches" \
-        -d "$(printf '{"ref":"%s"}' "$GH_BRANCH")"
-
-      echo "CI/CD wiring complete."
-      exit 0
-    '''
+  kind: 'app,linux'
+  identity: {
+    type: 'SystemAssigned'
   }
-  dependsOn: [
-    staticWebApp
-  ]
+  properties: {
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    siteConfig: {
+      linuxFxVersion: 'NODE|22-lts'
+      appCommandLine: 'node server.mjs'
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      http20Enabled: true
+      appSettings: [
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'true'
+        }
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~22'
+        }
+        {
+          name: 'GEOCATALOG_URI'
+          value: geoCatalog.properties.catalogUri
+        }
+        {
+          name: 'GEOCATALOG_API_VERSION'
+          value: '2025-04-30-preview'
+        }
+        {
+          name: 'ENTRA_TENANT_ID'
+          value: entraTenantId
+        }
+        {
+          name: 'ENTRA_CLIENT_ID'
+          value: entraClientId
+        }
+        {
+          name: 'FOUNDRY_ENDPOINT'
+          value: deployAiAgent ? openAi.properties.endpoint : ''
+        }
+        {
+          name: 'FOUNDRY_DEPLOYMENT'
+          value: deployAiAgent ? openAiDeploymentName : ''
+        }
+        {
+          name: 'AURORA_ENDPOINT'
+          value: deployAuroraModel ? auroraEndpoint.properties.scoringUri : ''
+        }
+        {
+          name: 'SAMPLE_CONTAINER_URL'
+          value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : ''
+        }
+        {
+          name: 'UPLOAD_CONTAINER_URL'
+          value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${modelOutputsContainerName}' : ''
+        }
+        {
+          name: 'UPLOAD_CONTAINER_NAME'
+          value: modelOutputsContainerName
+        }
+      ]
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------
@@ -772,8 +453,6 @@ output geoCatalogResourceId string = geoCatalog.id
 output geoCatalogUri string = geoCatalog.properties.catalogUri
 @description('Open the GeoCatalog in the portal and copy the GeoCatalog URI from the Overview blade; use it as GEOCATALOG_URL for the ingest script and Explorer.')
 output geoCatalogPortalHint string = 'Portal → ${effectiveGeoCatalogName} → Overview → GeoCatalog URI'
-output workstationName string = deployWorkstation ? workstationName : 'not-deployed'
-output bastionName string = networkNeeded ? bastionName : 'not-deployed'
 output sampleStorageAccount string = deploySampleStorage ? sampleStorageName : 'not-deployed'
 output sampleContainer string = deploySampleStorage ? sampleContainerName : 'not-deployed'
 output sampleContainerUrl string = deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${sampleContainerName}' : 'not-deployed'
@@ -784,8 +463,6 @@ output auroraEndpoint string = deployAuroraModel ? auroraEndpointName : 'not-dep
 output auroraModelDeployed bool = deployAuroraDeployment
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
-output webAppUrl string = deployWebApp ? 'https://${staticWebApp.properties.defaultHostname}' : 'not-deployed'
-@description('How the sample web app is published. When a GitHub PAT was supplied, the deploy wired the token + build variables and triggered CI/CD automatically; otherwise wire them in GitHub manually.')
-output webAppDeployHint string = deployWebApp ? (wireGithub ? 'Auto-wired: GitHub Actions was configured and the first build triggered. Watch the Actions tab; the site publishes to the URL above.' : 'Manual: set GitHub secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables and push, or re-deploy with a GitHub PAT to auto-wire.') : 'not-deployed'
-@description('Region the Static Web App was placed in. Co-located with the main deployment region when Static Web Apps supports it, otherwise the nearest supported region.')
-output webAppRegion string = deployWebApp ? effectiveStaticWebAppLocation : 'not-deployed'
+output webAppName string = deployWebApp ? webAppName : 'not-deployed'
+@description('Public URL of the web app. Deploy application code with `az webapp up` (or CI/CD) from the webapp/ folder; Oryx runs npm install + npm run build and starts `node server.mjs`.')
+output webAppUrl string = deployWebApp ? 'https://${webApp.properties.defaultHostName}' : 'not-deployed'

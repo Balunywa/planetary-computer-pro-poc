@@ -1,27 +1,29 @@
 # Microsoft Planetary Computer Pro Rapid POC
 
-A **turnkey Azure environment** that stands up everything the official
-[Microsoft Planetary Computer Pro](https://github.com/Azure/microsoft-planetary-computer-pro)
-samples assume you already have a **GeoCatalog**, a secure analytics workstation, sample
-storage, and a scoped managed identity, with a single **Deploy to Azure** button, and then
-**clones the official repository onto the workstation and pre-wires it** so an engineer can
-open Microsoft's notebooks and run them immediately.
+A **turnkey Azure environment** for exploring
+[Microsoft Planetary Computer Pro](https://github.com/Azure/microsoft-planetary-computer-pro):
+a single **Deploy to Azure** button stands up a **GeoCatalog**, optional sample storage with
+a scoped managed identity, an optional GeoAI **model plane** (Azure OpenAI + the Aurora
+weather model), and an optional **web app** running on **Azure App Service (Linux, Node)**
+that signs in with your Microsoft Entra identity and lets you browse, ingest, and visualize
+your geospatial data.
 
-The official repo is *code* (notebooks, the Aurora storm-impact app, tools, and the GeoAI
-SDK). Its own quick-start still expects you to bring a deployed GeoCatalog, blob storage,
-identities, networking, and a hand-edited `.env`. **This repo provides exactly those
-pieces**, the landing zone so you don't hand-build them for every POC.
+The official Microsoft repo is *code* (notebooks, the Aurora storm-impact app, tools, and the
+GeoAI SDK) and its quick-start expects you to bring a deployed GeoCatalog, blob storage,
+identities, and a hand-edited `.env`. **This repo provisions those prerequisites** — the
+landing zone — so you don't hand-build them for every POC, and it adds a first-class web app
+so you don't need the raw portal or a notebook VM to see your data.
 
 What the button deploys (pick the complete environment or only what you need):
 
-- a **GeoCatalog** (the Planetary Computer Pro resource that stores, indexes, and serves
-  your geospatial data using the open [STAC](https://learn.microsoft.com/azure/planetary-computer/stac-overview) standard),
-- an optional **analytics workstation** (a Windows VM with Visual Studio Code, Python, Git,
-  and the Azure CLI) that **clones the official repo**, installs its dependencies and the
-  Planetary Computer Pro SDK, and pre-fills the environment so the notebooks are ready to
-  run, and
-- an optional **sample-data storage account + user-assigned managed identity** for the
-  secure managed-identity ingestion path (bring your own data),
+- a **GeoCatalog** (the Planetary Computer Pro resource that stores, indexes, and serves your
+  geospatial data using the open [STAC](https://learn.microsoft.com/azure/planetary-computer/stac-overview) standard),
+- an optional **web app** on **Azure App Service (Linux, Node)** — a server-rendered React app
+  that signs in with your Microsoft Entra identity and, through managed-identity backend
+  routes, browses STAC collections, renders tiles on a map, and drives the ingest / GeoAI
+  workflows against your GeoCatalog,
+- an optional **sample-data storage account + user-assigned managed identity** for the secure
+  managed-identity ingestion path (bring your own data),
 - an optional **AI agent**, an **Azure OpenAI (Microsoft Foundry)** account + GPT model
   deployment (`gpt-5-mini` by default) for agentic / reasoning GeoAI scenarios against the
   GeoCatalog, key-less via managed identity, and
@@ -30,86 +32,94 @@ What the button deploys (pick the complete environment or only what you need):
   deployment only runs when you supply a model asset ID and have A100 quota + accepted
   marketplace terms (so a default deploy never hard-fails on quota).
 
-The workstation is network-isolated and reached privately over **Azure Bastion**, with no
-public RDP port. This repo deploys and wires the environment; the actual ingest / configure
-/ visualize / GeoAI logic is Microsoft's official code, unchanged.
+There is **no workstation VM and no public inbound access to manage** — the web app is a
+managed Azure App Service reached over HTTPS, and every Azure data-plane call it makes uses
+its **system-assigned managed identity**. This repo deploys and wires the environment; for
+Microsoft's original notebooks and SDK, clone the
+[official repository](https://github.com/Azure/microsoft-planetary-computer-pro) separately.
 
-> **Primary scenario — weather for energy / oil & gas.** This POC is aimed at the
-> **weather** use case: predicting a tropical storm's path with the **Aurora** AI weather
-> model and assessing its impact on **energy / oil & gas infrastructure** (offshore
-> platforms, refineries, pipelines, the power grid). The headline workflow is Microsoft's
-> `applications/storm_impact_assessment/hurricane_forecast_infra_impact.ipynb`
-> (storm select → ECMWF via Planetary Computer Pro → Aurora inference on a Foundry GPU →
-> model outputs to your storage → infrastructure-impact map). The workstation opens on this
-> notebook first; the optical STAC tutorial is included as a quick proof that the
-> ingest → render → visualize pipeline works.
+> **Primary scenario — weather for energy / oil & gas.** This POC is aimed at the **weather**
+> use case: predicting a tropical storm's path with the **Aurora** AI weather model and
+> assessing its impact on **energy / oil & gas infrastructure** (offshore platforms,
+> refineries, pipelines, the power grid). The web app surfaces the storm-impact workflow
+> (storm select → ECMWF via Planetary Computer Pro → Aurora inference on a Foundry GPU → model
+> outputs to your storage → infrastructure-impact map), and the STAC browse + tile map prove
+> that the ingest → render → visualize pipeline works.
 
-> **Scope:** this POC provisions the environment and clones Microsoft's official samples.
-> The introductory notebooks (STAC ingest + visualization of sample Sentinel-2 imagery) run
-> out of the box. **You do not need the Aurora weather model to test the POC end to end** —
-> deploy the GeoCatalog + analytics workstation (+ sample storage/identity, AI agent optional)
-> and run the intro notebooks (create a STAC collection → ingest sample Sentinel-2 imagery →
-> apply render/mosaic config → view it in the GeoCatalog Explorer) for a full end-to-end run.
-> Aurora is only required for the advanced Aurora storm-impact app. The advanced Aurora storm-impact app needs the **Aurora** model on a
-> Foundry **GPU** endpoint (`Standard_NC24ads_A100_v4`): select the **Aurora weather model**
-> component to provision the Foundry workspace + endpoint, then supply a model asset ID (the
-> official app uses `azureml://registries/azureml/models/Aurora/versions/4`) and have GPU
-> quota + accepted marketplace terms to deploy the model. See
+> **Scope:** you can test the POC end to end **without the Aurora weather model** — deploy the
+> GeoCatalog + web app (+ sample storage/identity, AI agent optional) and use the app to
+> create a STAC collection, ingest sample Sentinel-2 imagery, apply render/mosaic config, and
+> view it on the map. Aurora is only required for the advanced storm-impact workflow, which
+> needs the **Aurora** model on a Foundry **GPU** endpoint (`Standard_NC24ads_A100_v4`):
+> select the **Aurora weather model** component to provision the Foundry workspace + endpoint,
+> then supply a model asset ID (the official app uses
+> `azureml://registries/azureml/models/Aurora/versions/4`) and have GPU quota + accepted
+> marketplace terms to deploy the model. See
 > [Where Azure AI Foundry fits](#where-azure-ai-foundry-fits).
 
-> **Already superset of the storm app's own template.** The official repo ships a minimal
+> **Superset of the storm app's own template.** The official repo ships a minimal
 > `applications/storm_impact_assessment/deploy/azuredeploy.json` (GeoCatalog + storage + AI
-> Foundry + Aurora endpoint). This template provisions **all of that plus** the workstation,
-> networking/Bastion, managed-identity ingestion, and a pre-wired `.env`, so **don't run both** —
-> deploying this one already stands up everything the storm-impact notebook needs.
+> Foundry + Aurora endpoint). This template provisions **all of that plus** the web app and a
+> managed-identity ingestion path, so **don't run both** — deploying this one already stands up
+> everything the storm-impact workflow needs.
 
 ## Logical architecture
 
-The GeoCatalog is the top-level container for geospatial data. The analytics workstation
-runs Visual Studio Code and Python inside the virtual network; users connect through Azure
-Bastion, and direct inbound RDP is blocked. At deploy time the workstation clones the
-official Microsoft Planetary Computer Pro repository, installs its dependencies plus the
-Planetary Computer Pro SDK, and writes a pre-filled environment. From there an engineer
-signs in with the Azure CLI and runs Microsoft's official notebooks, creating a STAC
-collection, ingesting sample Sentinel-2 imagery, and applying render + mosaic configuration
-so the collection is visible in the GeoCatalog Explorer. The optional storage account and
-managed identity support the managed-identity ingestion path for your own data.
+The GeoCatalog is the top-level container for geospatial data. The **web app** runs on a
+managed **Azure App Service (Linux, Node)**, reached over HTTPS. Users sign in with their
+**Microsoft Entra identity**; the app's **system-assigned managed identity** is granted the
+data-plane roles it needs (GeoCatalog Administrator on the GeoCatalog, Storage Blob Data
+Contributor on the sample storage, and Cognitive Services OpenAI User on the Foundry account),
+so its backend API routes call the GeoCatalog STAC / Tiler / ingestion APIs, write model
+outputs to storage, and invoke the GeoAI models **without keys or SAS**. The optional storage
+account and user-assigned identity support the managed-identity ingestion path for your own
+data.
 
-This mirrors the Planetary Computer Pro reference architecture: public + private data
-flow into the GeoCatalog (the enterprise STAC catalog), which then feeds downstream apps
-and GeoAI models, using this POC's concrete components (every box is an Azure resource this
-template provisions in your subscription; the AI agent and Aurora are optional):
+This mirrors the Planetary Computer Pro reference architecture: public + private data flow
+into the GeoCatalog (the enterprise STAC catalog), which then feeds downstream apps and GeoAI
+models, using this POC's concrete components (every box is an Azure resource this template
+provisions in your subscription; the AI agent and Aurora are optional):
 
-[![Logical architecture for the Planetary Computer Pro POC: public and private data ingest into a GeoCatalog inside your Azure subscription, which feeds the optional Microsoft Foundry GeoAI models (Azure OpenAI agent and Aurora) and downstream apps.](deploy/azure/media/logical-architecture.png)](deploy/azure/media/logical-architecture.png)
+[![Logical architecture for the Planetary Computer Pro POC: public and private data ingest into a GeoCatalog inside your Azure subscription, which feeds the optional Microsoft Foundry GeoAI models (Azure OpenAI agent and Aurora) and the web app.](deploy/azure/media/logical-architecture.png)](deploy/azure/media/logical-architecture.png)
+
+```mermaid
+flowchart LR
+    U[You<br/>Microsoft Entra sign-in] -->|HTTPS| APP[Web app<br/>Azure App Service - Node SSR]
+    APP -->|managed identity| GC[(GeoCatalog<br/>STAC / Tiler / ingestion)]
+    APP -->|managed identity| SA[Sample storage<br/>model outputs]
+    APP -->|managed identity| FDN[Foundry<br/>Azure OpenAI agent]
+    APP -->|managed identity| AUR[Aurora<br/>GPU endpoint]
+    GC --> APP
+```
 
 ### Where Azure AI Foundry fits
 
-The Planetary Computer Pro docs call this out directly: you can *"integrate data in
-Planetary Computer Pro with Microsoft applications such as Fabric and Microsoft Foundry."*
-In the reference architecture, the GeoCatalog is the **geospatial data plane** and Azure AI
-Foundry is the **model plane**:
+The Planetary Computer Pro docs call this out directly: you can *"integrate data in Planetary
+Computer Pro with Microsoft applications such as Fabric and Microsoft Foundry."* In the
+reference architecture, the GeoCatalog is the **geospatial data plane** and Azure AI Foundry
+is the **model plane**:
 
-- **Model inputs**: an application or agent queries the GeoCatalog's STAC/Tiler/SAS APIs
-  (authenticated with Microsoft Entra ID / managed identity) to pull imagery and metadata,
-  and passes it to a GeoAI model hosted in Foundry (discriminative models like land
-  classification and object detection, foundation models like Aurora for weather, or
-  reasoning/agentic workflows on Azure OpenAI).
-- **Model outputs**: the model's results (e.g., a land-cover raster or detected features)
-  are written back to Azure Blob Storage as STAC items and **ingested into the GeoCatalog**
-  through the same managed-identity ingestion path this POC sets up, so outputs become
-  first-class, searchable layers alongside the source imagery.
+- **Model inputs**: the web app (or an agent) queries the GeoCatalog's STAC/Tiler/SAS APIs
+  (authenticated with Microsoft Entra ID / managed identity) to pull imagery and metadata, and
+  passes it to a GeoAI model hosted in Foundry (discriminative models like land classification
+  and object detection, foundation models like Aurora for weather, or reasoning/agentic
+  workflows on Azure OpenAI).
+- **Model outputs**: the model's results (e.g., a land-cover raster or detected features) are
+  written back to Azure Blob Storage as STAC items and **ingested into the GeoCatalog** through
+  the same managed-identity ingestion path this POC sets up, so outputs become first-class,
+  searchable layers alongside the source imagery.
 
 This POC deploys the data plane (the GeoCatalog + ingestion) **and, optionally, the model
 plane**: selecting the **AI agent** component provisions an Azure OpenAI (Foundry) account +
 GPT deployment (key-less via managed identity), and selecting the **Aurora weather model**
-component provisions a Foundry (Azure ML) workspace + GPU managed-compute endpoint, with
-the GPU model deployment gated behind a model asset ID + quota so it never hard-fails.
+component provisions a Foundry (Azure ML) workspace + GPU managed-compute endpoint, with the
+GPU model deployment gated behind a model asset ID + quota so it never hard-fails.
 
-When the AI agent is deployed, the workstation is pre-wired with `FOUNDRY_ENDPOINT` and
-`FOUNDRY_DEPLOYMENT` machine environment variables, and the Aurora endpoint (when deployed)
-is pre-filled into the storm-impact app's `.env` as `AURORA_FOUNDRY_ENDPOINT`. Deployment
-outputs also surface `aiAgentEndpoint`, `aiAgentDeployment`, `auroraWorkspace`,
-`auroraEndpoint`, and `auroraModelDeployed`.
+When these components are deployed, the web app is configured with `FOUNDRY_ENDPOINT` /
+`FOUNDRY_DEPLOYMENT` and `AURORA_ENDPOINT` app settings, and its managed identity is granted
+**Cognitive Services OpenAI User** on the Foundry account. Deployment outputs also surface
+`aiAgentEndpoint`, `aiAgentDeployment`, `auroraWorkspace`, `auroraEndpoint`, and
+`auroraModelDeployed`.
 
 ## What this adds over the official repo
 
@@ -120,11 +130,9 @@ assumes you already have the Azure infrastructure. This repo fills that gap:
 | The official samples assume you have… | This repo provisions it |
 | --- | --- |
 | A deployed **GeoCatalog** | `Microsoft.Orbital/geoCatalogs` created by the button |
-| A place to **run the notebooks** | Bastion-only Windows workstation with VS Code, Python, Git |
-| The **code** on that machine | Clones the official repo + installs its deps and the PC Pro SDK |
+| A **place to explore the data** | A web app on Azure App Service (Entra sign-in, STAC browse, tile map, ingest/GeoAI workflows) |
 | **Blob storage** for assets/outputs | Sample storage account + container |
-| An **identity** wired to the GeoCatalog | User-assigned managed identity with Storage Blob Data Reader, associated to the GeoCatalog |
-| A hand-edited **`.env`** | Pre-filled with the GeoCatalog URI + provisioned storage (no secrets) |
+| An **identity** wired to the GeoCatalog | Managed identities with data-plane roles, associated to the GeoCatalog |
 | A **model plane** to run GeoAI | Optional Azure OpenAI (Foundry) agent + optional Aurora GPU Foundry endpoint |
 
 Net effect: one **Deploy to Azure** button turns a set of prerequisites and a manual setup
@@ -136,8 +144,7 @@ their samples stay the source of truth.
 | Provider | Used for |
 | --- | --- |
 | `Microsoft.Orbital` | The Planetary Computer Pro GeoCatalog |
-| `Microsoft.Compute` | The analytics workstation VM |
-| `Microsoft.Network` | VNet, NSG, public IP, NIC, Bastion |
+| `Microsoft.Web` | The web app (App Service plan + site) |
 | `Microsoft.Storage` | Sample-data storage account |
 | `Microsoft.ManagedIdentity` | Ingestion managed identity |
 | `Microsoft.CognitiveServices` | Azure OpenAI (Foundry) agent (optional) |
@@ -163,56 +170,65 @@ Register-AzResourceProvider -ProviderNamespace Microsoft.Orbital
 ## Deploy to Azure
 
 Click the button, sign in to the Azure portal, choose your components (GeoCatalog is always
-deployed; add the workstation and/or sample storage), set the administrator credentials for
-the workstation, and select **Review + create**.
+deployed; add the web app and/or sample storage), pick the App Service plan SKU, and select
+**Review + create**.
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBalunywa%2Fplanetary-computer-pro-poc%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FBalunywa%2Fplanetary-computer-pro-poc%2Fmain%2Fdeploy%2Fazure%2FcreateUiDefinition.json)
 
 [Visualize](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2FBalunywa%2Fplanetary-computer-pro-poc%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
 
-> The GeoCatalog and Bastion provision in parallel; a typical deployment completes in
-> about **10–20 minutes** (the GeoCatalog is the long pole). The workstation software
-> install (tooling, cloning the official repo, and installing its dependencies) is capped
-> at 30 minutes. The deployment status may show "Created" before the GeoCatalog is fully
-> ready.
+> The GeoCatalog is the long pole; a typical deployment completes in about **10–20 minutes**
+> (the deployment status may show "Created" before the GeoCatalog is fully ready). The App
+> Service is created empty — publish the application code afterwards (see below).
 
-### Or: the guided deploy wizard (no terminal)
+## Publish the web app code
 
-Prefer a self-service, click-through experience away from the portal? Download
-**`StormLens-Deploy.cmd`** (from the [Get Started page](deploy/azure/webapp/get-started.html)
-of the web app) and double-click it on any Windows machine. It ensures the Azure CLI is
-present (installs it with winget if missing), then opens a **local browser wizard** at
-`http://localhost:7333` that signs you in, lets you pick subscription / region / components,
-runs prerequisite checks, and provisions the **same `azuredeploy.json` template** with a
-live phase tracker and streaming log. It uses a built-in PowerShell HTTP listener (no Node,
-no Python). This is an *additional* path — the **Deploy to Azure** button above is
-unchanged.
+The template creates the **App Service** (Linux, Node) configured to build and start the app,
+but it does **not** contain your application bits. Publish the `webapp/` folder once the
+infrastructure is deployed. Oryx runs `npm install` + `npm run build` and the site starts with
+`node server.mjs`.
+
+```bash
+# from the repo root
+cd webapp
+az webapp up --name <webAppName> --resource-group pcpro-poc-rg --runtime "NODE:22-lts"
+```
+
+`<webAppName>` and the site URL are in the `webAppName` / `webAppUrl` deployment outputs. You
+can also wire CI/CD (GitHub Actions or Azure DevOps) to deploy `webapp/` on push.
 
 ## Deploy from the command line (optional)
 
 ```bash
 az group create -n pcpro-poc-rg -l westeurope
 
-az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
-  -p adminUsername=azureuser \
-     adminPassword='<strong-password>'
+az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep
 ```
 
-To deploy only the GeoCatalog (no workstation, no storage):
+To deploy only the GeoCatalog (no web app, no storage):
 
 ```bash
 az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
-  -p deployWorkstation=false deploySampleStorage=false
+  -p deployWebApp=false deploySampleStorage=false
 ```
 
-The deployment outputs `geoCatalogName`, `geoCatalogResourceId`, `workstationName`,
-`bastionName`, `sampleStorageAccount`, `sampleContainer`, `sampleContainerUrl`,
+To set the App Service SKU and (optionally) the Entra IDs for MSAL sign-in:
+
+```bash
+az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
+  -p appServiceSku=B1 entraTenantId='<tenant-guid>' entraClientId='<spa-client-guid>'
+```
+
+The deployment outputs `geoCatalogName`, `geoCatalogResourceId`, `geoCatalogUri`,
+`webAppName`, `webAppUrl`, `sampleStorageAccount`, `sampleContainer`, `sampleContainerUrl`,
 `ingestIdentityClientId`, and `ingestIdentityObjectId`.
 
 ## Grant yourself access to the GeoCatalog
 
-Data-plane operations (creating collections, ingesting, visualizing) require a
-**GeoCatalog Administrator** role assignment on the GeoCatalog resource:
+Data-plane operations (creating collections, ingesting, visualizing) require a **GeoCatalog
+Administrator** role assignment on the GeoCatalog resource. The web app's managed identity is
+granted this automatically; to browse or administer the catalog yourself, grant your own
+identity too:
 
 ```bash
 az role assignment create \
@@ -222,196 +238,98 @@ az role assignment create \
               --namespace Microsoft.Orbital --resource-type geoCatalogs --query id -o tsv)"
 ```
 
-## Run the official samples (ingest → configure → visualize)
+## Use the web app
 
-The workstation already has Microsoft's official repository cloned to
-`C:\Users\Public\Desktop\microsoft-planetary-computer-pro`, its dependencies and the
-Planetary Computer Pro SDK installed, and a pre-filled environment. You run Microsoft's
-notebooks unchanged; the data-plane calls use your signed-in identity.
+Open the `webAppUrl` from the deployment outputs in a browser. Sign in with your Microsoft
+Entra identity (when `entraTenantId` / `entraClientId` are configured), then use the app to:
 
-> **Pre-seeded by default.** When the workstation is deployed, the template grants its
-> managed identity the **GeoCatalog Administrator** role and, at deploy time, headlessly
-> creates a `sentinel-2-l2a-sample` collection, ingests a few Sentinel-2 scenes, and
-> applies a render + mosaic configuration — so the **Explorer already shows imagery on
-> first open**. Turn this off with the *"Pre-load sample imagery"* checkbox (portal) or
-> `seedSampleData=false`. The tutorial notebook still walks through the same flow so you
-> can build your own collections.
+1. **Browse** your GeoCatalog's STAC collections and items.
+2. **Visualize** imagery on a MapLibre tile map using the GeoCatalog's render + mosaic config.
+3. **Ingest** sample Sentinel-2 imagery (create a collection, register the public Planetary
+   Computer container as an ingestion source, ingest a few scenes, apply render/mosaic).
+4. **Run the weather workflow** (when Aurora is deployed): pick a storm, pull ECMWF data via
+   Planetary Computer Pro, run Aurora inference on the Foundry GPU endpoint, write model
+   outputs to your `model-outputs` storage container, and map the storm track against energy /
+   power infrastructure.
+
+The app's backend API routes perform these operations server-side using the App Service
+**managed identity**, so no keys or tokens are handled in the browser. The `GEOCATALOG_URI`
+app setting is pre-filled with the resource's real `catalogUri` (including the
+platform-assigned hash segment, `https://<name>.<hash>.<region>.geocatalog.spatio.azure.com`),
+read directly off the GeoCatalog during deployment — nothing to paste. It is also emitted as
+the `geoCatalogUri` deployment output.
 
 ### Where the sample data comes from
 
-The seeder does **not** copy imagery into your storage account, and your storage account is
-**not** the GeoCatalog data source. The workstation's managed identity registers **Microsoft's
-public Planetary Computer** as the ingestion source (via a short-lived SAS), then tells the
-GeoCatalog to ingest a few Sentinel-2 scenes directly from it. No image bytes flow through the
-VM — it only orchestrates the API calls. The ingested items are stored in the GeoCatalog's own
-managed storage.
+The sample-ingest flow does **not** copy imagery into your storage account, and your storage
+account is **not** the GeoCatalog data source. The app's managed identity registers
+**Microsoft's public Planetary Computer** as the ingestion source (via a short-lived SAS), then
+tells the GeoCatalog to ingest a few Sentinel-2 scenes directly from it. No image bytes flow
+through the app — it only orchestrates the API calls. The ingested items are stored in the
+GeoCatalog's own managed storage.
 
 The optional **sample storage account** (`deploySampleStorage`) is unrelated to GeoCatalog
-seeding — it's where the **weather (storm-impact) notebook uploads its Aurora model outputs**
-(to a `model-outputs` container). The workstation's managed identity is granted **Storage
-Blob Data Contributor** on this account, so the notebook writes those outputs with managed
-identity — no account keys or SAS. The `.env` is pre-filled with `UPLOAD_CONTAINER_NAME` and
-the container URL.
+seeding — it's where the **weather (storm-impact) workflow uploads its Aurora model outputs**
+(to a `model-outputs` container). The web app's managed identity is granted **Storage Blob Data
+Contributor** on this account, so outputs are written with managed identity — no account keys or
+SAS. The container URL is surfaced to the app as `UPLOAD_CONTAINER_URL` /
+`UPLOAD_CONTAINER_NAME`.
 
 | | Source of sample imagery | GeoCatalog's stored copy | Deployed sample storage acct |
 |---|---|---|---|
 | **What** | MS Planetary Computer public blob | Catalog-managed storage (internal) | Your storage account |
 | **Role** | Ingestion source (read via SAS) | Where ingested items live | Weather model-outputs target |
-| **Who fills it** | Microsoft (already populated) | GeoCatalog ingestion engine | Storm-impact notebook (Aurora outputs, via MI) |
-
-```mermaid
-flowchart LR
-    PC[MS Planetary Computer<br/>public blob + STAC] -->|SAS + STAC search| VM[Workstation MI<br/>seed_geocatalog.py]
-    VM -->|register source + ingest| GC[(GeoCatalog<br/>managed storage)]
-    GC --> EXP[Explorer shows imagery]
-    SA[Your sample storage acct] -.Aurora model outputs written by storm-impact notebook.-> AUR[Weather workflow]
-```
-
-### End-to-end deploy flow
-
-```mermaid
-flowchart TD
-    A[Deploy to Azure form] --> B[ARM: GeoCatalog + VM + roles]
-    B --> C[GeoCatalog Admin role -> VM identity]
-    C --> D[runCommand: setup.ps1]
-    D --> E[Install tools + clone repo + .env]
-    D --> F[seed_geocatalog.py as MI]
-    F --> G[collection + ingest + render/mosaic]
-    E --> H[Shortcut + workspace + RunOnce]
-    H --> I[Bastion logon: VS Code auto-opens]
-    G --> J[Explorer shows imagery on first open]
-    I --> J
-```
-
-1. Open the workstation page in the portal → **Connect → Connect via Bastion**. Direct
-   public RDP is blocked.
-2. **Double-click the desktop shortcut `1 - Start Here (open in VS Code)`.** It signs you
-   in to Azure (`az login`) if needed and opens the repo **already loaded** in VS Code with
-   `START-HERE.md` showing the guided steps — nothing to browse for or copy. (VS Code also
-   opens the workspace automatically the first time you sign in to the VM.) If you'd rather
-   do it by hand, `connection-info.txt` on the desktop has the folder path and the same
-   steps.
-3. In VS Code, follow `START-HERE.md`: it links directly to the notebooks. Sign in via
-   **Terminal → Run Task… → "Azure: Sign in (az login)"** if you skipped the shortcut.
-4. The `GEOCATALOG_URI` in the app `.env` is **pre-filled with the resource's real
-   `catalogUri`**, which the deployment reads directly off the GeoCatalog (property
-   `geoCatalog.properties.catalogUri`) and injects into the setup script — so it already
-   includes the platform-assigned hash segment
-   (`https://<name>.<hash>.<region>.geocatalog.spatio.azure.com`) and matches the portal
-   exactly. Nothing to paste. If you ever need to verify it, it's under your GeoCatalog →
-   **Overview → GeoCatalog URI** (and it's also emitted as the `geoCatalogUri` deployment
-   output). A name-only URL like `https://<name>.<region>.geocatalog.spatio.azure.com` is
-   **not** valid — the hash is generated by Azure and cannot be derived from name/region.
-5. **Run the weather workflow (the headline scenario), linked from `START-HERE.md`:**
-
-   ```text
-   applications\storm_impact_assessment\hurricane_forecast_infra_impact.ipynb
-   ```
-
-   It selects a storm (IBTrACS; Hurricane Helene 2024 pre-selected), pulls **ECMWF** weather
-   data via Planetary Computer Pro, runs **Aurora** hurricane-track inference on a Foundry
-   GPU endpoint, writes the model outputs to your `model-outputs` storage container (managed
-   identity — no keys), ingests results into the GeoCatalog, and maps the storm track against
-   **energy / power infrastructure** (OpenStreetMap). Its `.env` is pre-filled; you only add a
-   Foundry **Aurora GPU endpoint + token** if you didn't deploy the Aurora model here.
-6. Open the **Explorer** at `<GEOCATALOG_URI>/collections` to visualize the results (and the
-   pre-seeded sample collection).
-
-Want to see the raw ingest → render → visualize pipeline first? Run the tutorial
-`notebooks\GeoCatalog_Tutorial.ipynb` — it creates a STAC collection, registers the public
-Planetary Computer container as an ingestion source, ingests sample Sentinel-2 scenes, and
-applies render + mosaic configuration (the same pipeline the weather workflow uses to publish
-its results).
-
-Other official assets already on the workstation:
-
-- `notebooks\create-stac-items.ipynb`: build STAC items from your own rasters.
-- `notebooks\GeoCatalog_Tutorial.ipynb`: minimal ingest → render → visualize pipeline demo.
-- `tools\`: STAC Forge, the MPC MCP server, partner-app integration, and more.
-
-## StormLens web app (branded front-end)
-
-Operators do not have to use the raw GeoCatalog portal. The deployment also ships a small
-branded web app — **StormLens** — with a marketing-style showcase (home / weather workflow /
-architecture / get-started pages) plus a **live map explorer** that signs in with your
-Microsoft Entra identity, lists your GeoCatalog collections, and draws item footprints and
-thumbnails on a MapLibre map. It is a no-build static site (CDN scripts + a runtime
-`app-config.js`), so the exact same files run two ways:
-
-- **Option A — run locally on the workstation.** `setup.ps1` downloads the site to
-  `C:\StormLens\webapp`, injects your real GeoCatalog URL into `assets\app-config.js`, and
-  drops a **"2 - StormLens (local).cmd"** launcher on the desktop that serves it at
-  `http://localhost:8080`.
-- **Option B — Azure Static Web Apps.** The template provisions a **Free-tier Static Web
-  App**; `setup.ps1` publishes the site to it with the deployment token (passed as a
-  *protected* Run Command parameter, so the workstation never needs RBAC on the resource).
-  The public URL is in the `webAppUrl` deployment output and in `connection-info.txt`.
-
-Both modes are on by default and controlled by the **Deploy the StormLens web app** toggle
-in the portal form (or the `deployWebApp` parameter). There is also a third, VM-independent
-path: a **one-click local installer**. The Get Started page offers a **`StormLens-Setup.cmd`**
-download — double-click it on any Windows machine or VM and it fetches `setup/bootstrap.ps1`
-from this repo, downloads the site into `%LOCALAPPDATA%\StormLens`, asks for your GeoCatalog
-URL, and serves it at `http://localhost:8080` using a built-in PowerShell HTTP listener (no
-Node, Python, git, or admin rights required). The Live Explorer signs in with
-**MSAL**, and the deployment **auto-creates the Microsoft Entra app registration** (SPA
-redirect URIs for the local and Static Web Apps URLs, delegated GeoCatalog access) and writes
-its `clientId`/`tenantId` into `app-config.js` — best-effort, so it only succeeds when the
-workstation identity (or signed-in deployer) has directory rights to create app
-registrations. If it can't, `setup.ps1` leaves the IDs blank and `connection-info.txt`
-explains the one manual step. The showcase pages work without sign-in; only the live map
-needs it.
+| **Who fills it** | Microsoft (already populated) | GeoCatalog ingestion engine | Storm-impact workflow (Aurora outputs, via MI) |
 
 ## Use your own data (managed-identity ingestion)
 
-When you deploy the sample storage component, the template also creates a user-assigned
-managed identity (`pcpro-ingest-identity`) with **Storage Blob Data Reader** on the sample
-container, and **associates it with the GeoCatalog** for you, so the identity is ready for
-the managed-identity ingestion path the official notebooks use. To ingest your own assets:
+When you deploy the sample storage component, the template also creates a user-assigned managed
+identity (`pcpro-ingest-identity`) with **Storage Blob Data Reader** on the sample container,
+and **associates it with the GeoCatalog** for you, so the identity is ready for the
+managed-identity ingestion path the official APIs use. To ingest your own assets:
 
-1. Upload your COGs / rasters to the `sample-assets` container in the deployed storage
-   account, and build STAC items for them (see
-   `notebooks\create-stac-items.ipynb` in the cloned repo).
+1. Upload your COGs / rasters to the `sample-assets` container in the deployed storage account,
+   and build STAC items for them.
 2. Register the container as a **managed-identity ingestion source** using the deployment
-   outputs `sampleContainerUrl` and `ingestIdentityObjectId`. The identity is already
-   assigned to the GeoCatalog and already holds Storage Blob Data Reader on the container,
-   so no extra role setup is needed. See
-   [Set up an ingestion source using managed identity](https://learn.microsoft.com/azure/planetary-computer/set-up-ingestion-credentials-managed-identity)
-   for the API the notebooks call.
-3. Post your STAC items to the GeoCatalog Items API (the pattern the tutorial notebook
-   demonstrates).
+   outputs `sampleContainerUrl` and `ingestIdentityObjectId`. The identity is already assigned
+   to the GeoCatalog and already holds Storage Blob Data Reader on the container, so no extra
+   role setup is needed. See
+   [Set up an ingestion source using managed identity](https://learn.microsoft.com/azure/planetary-computer/set-up-ingestion-credentials-managed-identity).
+3. Post your STAC items to the GeoCatalog Items API.
+
+For Microsoft's original notebooks, SDK, and the storm-impact application source, clone the
+[official repository](https://github.com/Azure/microsoft-planetary-computer-pro) separately —
+this POC's infrastructure (GeoCatalog URI, storage, identities) satisfies its prerequisites.
 
 ## What's in this repo
 
 | Path | Purpose |
 | --- | --- |
-| `deploy/azure/main.bicep` | Bicep source that provisions the GeoCatalog, optional workstation (VNet/NSG/Bastion), and optional sample storage + ingestion identity |
+| `webapp/` | The web app — a server-rendered React app (TanStack Start + Vite) that signs in with Entra, browses STAC, renders tiles, and drives ingest/GeoAI workflows via managed-identity backend routes. Deployed to Azure App Service (Linux, Node) |
+| `deploy/azure/main.bicep` | Bicep source that provisions the GeoCatalog, optional web app (App Service), and optional sample storage + ingestion identity, plus the optional AI agent + Aurora model plane |
 | `deploy/azure/azuredeploy.json` | Compiled ARM template behind the **Deploy to Azure** button |
-| `deploy/azure/createUiDefinition.json` | Portal form for the one-click deployment (component selection + credentials) |
-| `deploy/azure/webapp/` | The **StormLens** branded web app — showcase pages + a live GeoCatalog map explorer (no-build static site for local hosting or Azure Static Web Apps) |
-| `deploy/azure/setup.ps1` | Run by an Azure VM Run Command that installs Python, Azure CLI, Git, and VS Code, clones the official Microsoft repo, installs its dependencies + the PC Pro SDK, and pre-wires the environment |
-| `deploy/azure/requirements.txt` | Base Python packages the workstation installs so the official notebooks run out of the box |
+| `deploy/azure/createUiDefinition.json` | Portal form for the one-click deployment (component selection + App Service SKU + optional Entra IDs) |
 | `deploy/azure/teardown.sh` | Deletes the resource group and everything in it |
 
 ## Security
 
-- **RDP only, via an Azure Bastion tunnel**: no SSH, no public RDP port; the workstation
-  NSG has no inbound rules.
-- The workstation uses a **system-assigned managed identity**; the sample-data storage is
-  reached by a **user-assigned managed identity** scoped to **Storage Blob Data Reader** on
-  the sample container only.
-- The workstation admin password is a `@secure()` deploy-time parameter (not stored in the
-  template) and can be rotated with `az vm run-command`.
-- The official notebooks sign in interactively (`az login`) and never write tokens to disk.
-  The pre-filled `.env` and `connection-info.txt` contain **no secrets**: storage uses
-  managed identity, and the Aurora endpoint/token are placeholders you supply.
+- **No public inbound to manage:** the web app is a managed **Azure App Service** reached over
+  HTTPS. There is no workstation VM, no RDP/SSH, and no VNet/Bastion to operate.
+- The web app uses a **system-assigned managed identity** for every Azure data-plane call
+  (GeoCatalog, storage, Foundry). The sample-data ingestion path uses a **user-assigned managed
+  identity** scoped to **Storage Blob Data Reader** on the sample container only.
+- User sign-in is **Microsoft Entra ID (MSAL)**; the `entraTenantId` / `entraClientId` app
+  settings are public identifiers (not secrets). No tokens are handled in the browser — backend
+  routes act with the App Service identity.
+- App settings contain **no secrets**: storage and Foundry access use managed identity, and
+  service URIs are public identifiers.
 - GeoCatalog data-plane access is governed by Azure RBAC (**GeoCatalog Administrator** /
   **GeoCatalog Reader**). Grant least privilege.
 
 ## Tear down
 
-Delete the resource group to remove everything (GeoCatalog, workstation, storage, and all
-ingested data):
+Delete the resource group to remove everything (GeoCatalog, web app, storage, and all ingested
+data):
 
 ```bash
 ./deploy/azure/teardown.sh pcpro-poc-rg

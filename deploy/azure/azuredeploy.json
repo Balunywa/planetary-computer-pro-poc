@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "3868261798676575710"
+      "templateHash": "13960260973587029168"
     }
   },
   "parameters": {
@@ -41,13 +41,6 @@
         "description": "GeoCatalog service tier."
       }
     },
-    "deployWorkstation": {
-      "type": "bool",
-      "defaultValue": true,
-      "metadata": {
-        "description": "Deploy the analytics workstation (Windows VM + VS Code + Python + Azure CLI) reached privately over Azure Bastion. It runs the sample ingestion script."
-      }
-    },
     "deploySampleStorage": {
       "type": "bool",
       "defaultValue": true,
@@ -55,61 +48,25 @@
         "description": "Deploy a sample-data storage account and a user-assigned managed identity for the managed-identity ingestion path (bring-your-own-data scenario)."
       }
     },
-    "seedSampleData": {
-      "type": "bool",
-      "defaultValue": true,
-      "metadata": {
-        "description": "At deploy time, headlessly create a sample STAC collection and ingest a few Sentinel-2 scenes into the GeoCatalog (using the workstation identity) so the Explorer already shows imagery on first open. Requires the workstation."
-      }
-    },
     "deployWebApp": {
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Provision an Azure Static Web App for the official Microsoft Planetary Computer Pro sample web app (pcp-web-sample: MSAL sign-in + STAC browse + tile map over the GeoCatalog). The resource is created empty; content is published by the repo GitHub Actions workflow (.github/workflows/azure-static-web-apps.yml) - the Microsoft-recommended CI/CD model."
+        "description": "Deploy the web app on an Azure App Service (Linux, Node). The site is created configured for Node; application code is published separately (CI/CD or `az webapp up`) and its managed identity is granted the GeoCatalog / storage / Foundry data-plane roles."
       }
     },
-    "staticWebAppLocation": {
+    "appServiceSku": {
       "type": "string",
-      "defaultValue": "",
-      "allowedValues": [
-        "",
-        "westus2",
-        "centralus",
-        "eastus2",
-        "westeurope",
-        "eastasia"
-      ],
+      "defaultValue": "B1",
       "metadata": {
-        "description": "Optional override for the sample web app Static Web App region. Leave blank to automatically co-locate the web app with the main deployment region (it maps to the nearest supported Static Web Apps region when the main region is not one of them). Static Web Apps is only offered in a few regions; content is served globally from the CDN regardless of this value."
-      }
-    },
-    "githubRepositoryUrl": {
-      "type": "string",
-      "defaultValue": "https://github.com/Balunywa/planetary-computer-pro-poc",
-      "metadata": {
-        "description": "GitHub repository (https://github.com/<owner>/<repo>) that hosts the sample web app (pcp-web-sample) and the deploy workflow. The deploy button wires this repo to the Static Web App CI/CD."
-      }
-    },
-    "githubBranch": {
-      "type": "string",
-      "defaultValue": "main",
-      "metadata": {
-        "description": "Branch the Static Web App builds and deploys from."
-      }
-    },
-    "githubToken": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "GitHub personal access token (classic) with \"repo\" + \"workflow\" scopes. Used ONCE at deploy time to wire the Static Web App deployment token into the repo as a GitHub secret and to set the build variables + trigger the first CI/CD run. It is not stored on any resource. Leave blank to skip auto-wiring (you then add the token/variables in GitHub manually)."
+        "description": "App Service plan SKU for the web app (e.g. F1, B1, P0v3, P1v3)."
       }
     },
     "entraClientId": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Microsoft Entra SPA app registration (client) ID the sample web app uses for MSAL sign-in. This is a public identifier, not a secret. Required for sign-in to work."
+        "description": "Microsoft Entra SPA app registration (client) ID the web app uses for MSAL sign-in. This is a public identifier, not a secret."
       }
     },
     "entraTenantId": {
@@ -117,41 +74,6 @@
       "defaultValue": "",
       "metadata": {
         "description": "Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret."
-      }
-    },
-    "adminUsername": {
-      "type": "string",
-      "defaultValue": "azureuser",
-      "metadata": {
-        "description": "Administrator username for the workstation VM."
-      }
-    },
-    "adminPassword": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Administrator password for the workstation VM (used for RDP over the Azure Bastion tunnel). Leave empty when not deploying the workstation."
-      }
-    },
-    "vmSize": {
-      "type": "string",
-      "defaultValue": "Standard_D4s_v3",
-      "metadata": {
-        "description": "Size of the workstation VM."
-      }
-    },
-    "artifactsBaseUrl": {
-      "type": "string",
-      "defaultValue": "https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure",
-      "metadata": {
-        "description": "Base URL (raw) that hosts setup.ps1. Point this at your fork if you change the provisioning script."
-      }
-    },
-    "officialRepoUrl": {
-      "type": "string",
-      "defaultValue": "https://github.com/Azure/microsoft-planetary-computer-pro.git",
-      "metadata": {
-        "description": "Git repository the workstation clones — the official Microsoft Planetary Computer Pro samples/notebooks/apps/tools. Point this at a fork if desired."
       }
     },
     "deployAiAgent": {
@@ -221,12 +143,8 @@
   "variables": {
     "namePrefix": "pcpro",
     "effectiveGeoCatalogName": "[if(empty(parameters('geoCatalogName')), toLower(format('pcpro{0}', uniqueString(resourceGroup().id))), parameters('geoCatalogName'))]",
-    "vnetName": "[format('{0}-vnet', variables('namePrefix'))]",
-    "nsgName": "[format('{0}-workstation-nsg', variables('namePrefix'))]",
-    "bastionName": "[format('{0}-bastion', variables('namePrefix'))]",
-    "bastionPipName": "[format('{0}-bastion-pip', variables('namePrefix'))]",
-    "workstationName": "[format('{0}-workstation', variables('namePrefix'))]",
-    "workstationNicName": "[format('{0}-workstation-nic', variables('namePrefix'))]",
+    "appServicePlanName": "[format('{0}-plan-{1}', variables('namePrefix'), variables('amlSuffix'))]",
+    "webAppName": "[format('pcpro-web-{0}', variables('amlSuffix'))]",
     "sampleStorageName": "[toLower(format('pcpro{0}', uniqueString(resourceGroup().id)))]",
     "ingestIdentityName": "[format('{0}-ingest-identity', variables('namePrefix'))]",
     "sampleContainerName": "sample-assets",
@@ -234,7 +152,6 @@
     "storageBlobDataReaderRoleId": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
     "geoCatalogAdminRoleId": "c9c97b9c-105d-4bb5-a2a7-7d15666c2484",
-    "networkNeeded": "[parameters('deployWorkstation')]",
     "openAiName": "[toLower(format('pcpro-oai-{0}', uniqueString(resourceGroup().id)))]",
     "cognitiveServicesOpenAiUserRoleId": "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
     "amlSuffix": "[take(uniqueString(resourceGroup().id), 8)]",
@@ -243,20 +160,7 @@
     "amlKeyVaultName": "[format('pcpro-kv-{0}', variables('amlSuffix'))]",
     "auroraEndpointName": "[format('aurora-{0}', variables('amlSuffix'))]",
     "auroraDeploymentName": "aurora",
-    "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]",
-    "staticWebAppName": "[format('pcpro-sample-{0}', variables('amlSuffix'))]",
-    "staticWebAppRegionForLocation": {
-      "eastus": "eastus2",
-      "northcentralus": "centralus",
-      "westeurope": "westeurope",
-      "canadacentral": "eastus2",
-      "uksouth": "westeurope"
-    },
-    "effectiveStaticWebAppLocation": "[if(empty(parameters('staticWebAppLocation')), variables('staticWebAppRegionForLocation')[parameters('location')], parameters('staticWebAppLocation'))]",
-    "wireGithub": "[and(parameters('deployWebApp'), not(empty(parameters('githubToken'))))]",
-    "githubRepoPath": "[replace(replace(parameters('githubRepositoryUrl'), 'https://github.com/', ''), '.git', '')]",
-    "githubOwner": "[split(variables('githubRepoPath'), '/')[0]]",
-    "githubRepo": "[split(variables('githubRepoPath'), '/')[1]]"
+    "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]"
   },
   "resources": [
     {
@@ -345,268 +249,35 @@
       ]
     },
     {
-      "condition": "[and(parameters('deploySampleStorage'), parameters('deployWorkstation'))]",
+      "condition": "[and(parameters('deploySampleStorage'), parameters('deployWebApp'))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('workstationName'), variables('storageBlobDataContributorRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('webAppName'), variables('storageBlobDataContributorRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
-        "principalId": "[if(parameters('deployWorkstation'), reference(resourceId('Microsoft.Compute/virtualMachines', variables('workstationName')), '2023-09-01', 'full').identity.principalId, '')]",
+        "principalId": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
         "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
-        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
       ]
     },
     {
-      "condition": "[and(parameters('deployWorkstation'), parameters('seedSampleData'))]",
+      "condition": "[parameters('deployWebApp')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
-      "name": "[guid(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), variables('workstationName'), variables('geoCatalogAdminRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), variables('webAppName'), variables('geoCatalogAdminRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('geoCatalogAdminRoleId'))]",
-        "principalId": "[if(parameters('deployWorkstation'), reference(resourceId('Microsoft.Compute/virtualMachines', variables('workstationName')), '2023-09-01', 'full').identity.principalId, '')]",
+        "principalId": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
         "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
-        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
-      ]
-    },
-    {
-      "condition": "[variables('networkNeeded')]",
-      "type": "Microsoft.Network/networkSecurityGroups",
-      "apiVersion": "2023-11-01",
-      "name": "[variables('nsgName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "securityRules": []
-      }
-    },
-    {
-      "condition": "[variables('networkNeeded')]",
-      "type": "Microsoft.Network/virtualNetworks",
-      "apiVersion": "2023-11-01",
-      "name": "[variables('vnetName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "addressSpace": {
-          "addressPrefixes": [
-            "10.20.0.0/16"
-          ]
-        },
-        "subnets": [
-          {
-            "name": "workstation-subnet",
-            "properties": {
-              "addressPrefix": "10.20.1.0/24",
-              "networkSecurityGroup": {
-                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
-              }
-            }
-          },
-          {
-            "name": "AzureBastionSubnet",
-            "properties": {
-              "addressPrefix": "10.20.2.0/26"
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
-      ]
-    },
-    {
-      "condition": "[variables('networkNeeded')]",
-      "type": "Microsoft.Network/publicIPAddresses",
-      "apiVersion": "2023-11-01",
-      "name": "[variables('bastionPipName')]",
-      "location": "[parameters('location')]",
-      "sku": {
-        "name": "Standard"
-      },
-      "properties": {
-        "publicIPAllocationMethod": "Static"
-      }
-    },
-    {
-      "condition": "[variables('networkNeeded')]",
-      "type": "Microsoft.Network/bastionHosts",
-      "apiVersion": "2023-11-01",
-      "name": "[variables('bastionName')]",
-      "location": "[parameters('location')]",
-      "sku": {
-        "name": "Standard"
-      },
-      "properties": {
-        "enableTunneling": true,
-        "ipConfigurations": [
-          {
-            "name": "bastion-ipconfig",
-            "properties": {
-              "subnet": {
-                "id": "[if(variables('networkNeeded'), format('{0}/subnets/AzureBastionSubnet', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))), '')]"
-              },
-              "publicIPAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('bastionPipName'))]"
-              }
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/publicIPAddresses', variables('bastionPipName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('deployWorkstation')]",
-      "type": "Microsoft.Network/networkInterfaces",
-      "apiVersion": "2023-11-01",
-      "name": "[variables('workstationNicName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "ipConfigurations": [
-          {
-            "name": "ipconfig1",
-            "properties": {
-              "privateIPAllocationMethod": "Dynamic",
-              "subnet": {
-                "id": "[if(variables('networkNeeded'), format('{0}/subnets/workstation-subnet', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))), '')]"
-              }
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('deployWorkstation')]",
-      "type": "Microsoft.Compute/virtualMachines",
-      "apiVersion": "2023-09-01",
-      "name": "[variables('workstationName')]",
-      "location": "[parameters('location')]",
-      "identity": {
-        "type": "SystemAssigned"
-      },
-      "properties": {
-        "hardwareProfile": {
-          "vmSize": "[parameters('vmSize')]"
-        },
-        "osProfile": {
-          "computerName": "pcpro-ws",
-          "adminUsername": "[parameters('adminUsername')]",
-          "adminPassword": "[parameters('adminPassword')]"
-        },
-        "storageProfile": {
-          "imageReference": {
-            "publisher": "MicrosoftWindowsServer",
-            "offer": "WindowsServer",
-            "sku": "2022-datacenter-azure-edition",
-            "version": "latest"
-          },
-          "osDisk": {
-            "createOption": "FromImage",
-            "managedDisk": {
-              "storageAccountType": "Premium_LRS"
-            }
-          }
-        },
-        "networkProfile": {
-          "networkInterfaces": [
-            {
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('workstationNicName'))]"
-            }
-          ]
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/networkInterfaces', variables('workstationNicName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('deployWorkstation')]",
-      "type": "Microsoft.Compute/virtualMachines/runCommands",
-      "apiVersion": "2023-09-01",
-      "name": "[format('{0}/{1}', variables('workstationName'), 'provision-workstation')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "source": {
-          "scriptUri": "[format('{0}/setup.ps1', parameters('artifactsBaseUrl'))]"
-        },
-        "parameters": [
-          {
-            "name": "GeoCatalogName",
-            "value": "[variables('effectiveGeoCatalogName')]"
-          },
-          {
-            "name": "GeoCatalogRegion",
-            "value": "[parameters('location')]"
-          },
-          {
-            "name": "GeoCatalogUri",
-            "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
-          },
-          {
-            "name": "RepoUrl",
-            "value": "[parameters('officialRepoUrl')]"
-          },
-          {
-            "name": "SampleContainerUrl",
-            "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), '')]"
-          },
-          {
-            "name": "UploadContainerUrl",
-            "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('modelOutputsContainerName')), '')]"
-          },
-          {
-            "name": "IngestIdentityObjectId",
-            "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, '')]"
-          },
-          {
-            "name": "FoundryEndpoint",
-            "value": "[if(parameters('deployAiAgent'), reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), '2024-10-01').endpoint, '')]"
-          },
-          {
-            "name": "FoundryDeployment",
-            "value": "[if(parameters('deployAiAgent'), parameters('openAiDeploymentName'), '')]"
-          },
-          {
-            "name": "AuroraEndpoint",
-            "value": "[if(parameters('deployAuroraModel'), reference(resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName')), '2023-10-01').scoringUri, '')]"
-          },
-          {
-            "name": "SeedSampleData",
-            "value": "[string(and(parameters('deployWorkstation'), parameters('seedSampleData')))]"
-          },
-          {
-            "name": "DeployWebApp",
-            "value": "[string(parameters('deployWebApp'))]"
-          },
-          {
-            "name": "WebAppUrl",
-            "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').defaultHostname), '')]"
-          }
-        ],
-        "protectedParameters": [],
-        "timeoutInSeconds": 7200
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",
-        "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
-        "[extensionResourceId(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), variables('workstationName'), variables('geoCatalogAdminRoleId')))]",
-        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
-        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
-        "[resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))]",
-        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]",
-        "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('workstationName'), variables('storageBlobDataContributorRoleId')))]"
+        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
       ]
     },
     {
@@ -646,19 +317,19 @@
       ]
     },
     {
-      "condition": "[and(parameters('deployAiAgent'), parameters('deployWorkstation'))]",
+      "condition": "[and(parameters('deployAiAgent'), parameters('deployWebApp'))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
-      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), variables('workstationName'), variables('cognitiveServicesOpenAiUserRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), variables('webAppName'), variables('cognitiveServicesOpenAiUserRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesOpenAiUserRoleId'))]",
-        "principalId": "[if(parameters('deployWorkstation'), reference(resourceId('Microsoft.Compute/virtualMachines', variables('workstationName')), '2023-09-01', 'full').identity.principalId, '')]",
+        "principalId": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
-        "[resourceId('Microsoft.Compute/virtualMachines', variables('workstationName'))]"
+        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
       ]
     },
     {
@@ -764,71 +435,95 @@
     },
     {
       "condition": "[parameters('deployWebApp')]",
-      "type": "Microsoft.Web/staticSites",
+      "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2023-12-01",
-      "name": "[variables('staticWebAppName')]",
-      "location": "[variables('effectiveStaticWebAppLocation')]",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "kind": "linux",
       "sku": {
-        "name": "Free",
-        "tier": "Free"
+        "name": "[parameters('appServiceSku')]"
       },
-      "properties": "[if(variables('wireGithub'), createObject('repositoryUrl', parameters('githubRepositoryUrl'), 'branch', parameters('githubBranch'), 'repositoryToken', parameters('githubToken'), 'allowConfigFileUpdates', true(), 'stagingEnvironmentPolicy', 'Enabled', 'buildProperties', createObject('appLocation', 'pcp-web-sample', 'outputLocation', 'dist', 'skipGithubActionWorkflowGeneration', true(), 'githubActionSecretNameOverride', 'AZURE_STATIC_WEB_APPS_API_TOKEN')), createObject('allowConfigFileUpdates', true(), 'stagingEnvironmentPolicy', 'Enabled'))]"
+      "properties": {
+        "reserved": true
+      }
     },
     {
-      "condition": "[variables('wireGithub')]",
-      "type": "Microsoft.Resources/deploymentScripts",
-      "apiVersion": "2023-08-01",
-      "name": "[format('wire-swa-cicd-{0}', variables('amlSuffix'))]",
+      "condition": "[parameters('deployWebApp')]",
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[variables('webAppName')]",
       "location": "[parameters('location')]",
-      "kind": "AzureCLI",
+      "kind": "app,linux",
+      "identity": {
+        "type": "SystemAssigned"
+      },
       "properties": {
-        "azCliVersion": "2.61.0",
-        "retentionInterval": "PT1H",
-        "timeout": "PT15M",
-        "cleanupPreference": "OnSuccess",
-        "environmentVariables": [
-          {
-            "name": "GH_TOKEN",
-            "secureValue": "[parameters('githubToken')]"
-          },
-          {
-            "name": "GH_OWNER",
-            "value": "[variables('githubOwner')]"
-          },
-          {
-            "name": "GH_REPO",
-            "value": "[variables('githubRepo')]"
-          },
-          {
-            "name": "GH_BRANCH",
-            "value": "[parameters('githubBranch')]"
-          },
-          {
-            "name": "WORKFLOW_FILE",
-            "value": "azure-static-web-apps.yml"
-          },
-          {
-            "name": "VITE_GEOCATALOG_URL",
-            "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
-          },
-          {
-            "name": "VITE_ENTRA_TENANT_ID",
-            "value": "[parameters('entraTenantId')]"
-          },
-          {
-            "name": "VITE_ENTRA_CLIENT_ID",
-            "value": "[parameters('entraClientId')]"
-          },
-          {
-            "name": "VITE_GEOCATALOG_API_VERSION",
-            "value": "2025-04-30-preview"
-          }
-        ],
-        "scriptContent": "      set +e\n      api=\"https://api.github.com/repos/$GH_OWNER/$GH_REPO\"\n      hdr_auth=\"Authorization: Bearer $GH_TOKEN\"\n      hdr_accept=\"Accept: application/vnd.github+json\"\n      hdr_ver=\"X-GitHub-Api-Version: 2022-11-28\"\n\n      setvar () {\n        vname=\"$1\"; vval=\"$2\"\n        # Try update first; if the variable does not exist yet (404), create it.\n        code=$(curl -s -o /dev/null -w \"%{http_code}\" -X PATCH \\\n          -H \"$hdr_auth\" -H \"$hdr_accept\" -H \"$hdr_ver\" \\\n          \"$api/actions/variables/$vname\" \\\n          -d \"$(printf '{\"name\":\"%s\",\"value\":\"%s\"}' \"$vname\" \"$vval\")\")\n        if [ \"$code\" != \"204\" ]; then\n          curl -s -o /dev/null -X POST \\\n            -H \"$hdr_auth\" -H \"$hdr_accept\" -H \"$hdr_ver\" \\\n            \"$api/actions/variables\" \\\n            -d \"$(printf '{\"name\":\"%s\",\"value\":\"%s\"}' \"$vname\" \"$vval\")\"\n        fi\n        echo \"set variable $vname (update http=$code)\"\n      }\n\n      setvar VITE_GEOCATALOG_URL \"$VITE_GEOCATALOG_URL\"\n      setvar VITE_ENTRA_TENANT_ID \"$VITE_ENTRA_TENANT_ID\"\n      setvar VITE_ENTRA_CLIENT_ID \"$VITE_ENTRA_CLIENT_ID\"\n      setvar VITE_GEOCATALOG_API_VERSION \"$VITE_GEOCATALOG_API_VERSION\"\n\n      echo \"Triggering workflow $WORKFLOW_FILE on $GH_BRANCH...\"\n      curl -s -o /dev/null -w \"workflow_dispatch http=%{http_code}\\n\" -X POST \\\n        -H \"$hdr_auth\" -H \"$hdr_accept\" -H \"$hdr_ver\" \\\n        \"$api/actions/workflows/$WORKFLOW_FILE/dispatches\" \\\n        -d \"$(printf '{\"ref\":\"%s\"}' \"$GH_BRANCH\")\"\n\n      echo \"CI/CD wiring complete.\"\n      exit 0\n    "
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "NODE|22-lts",
+          "appCommandLine": "node server.mjs",
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "http20Enabled": true,
+          "appSettings": [
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "true"
+            },
+            {
+              "name": "WEBSITE_NODE_DEFAULT_VERSION",
+              "value": "~22"
+            },
+            {
+              "name": "GEOCATALOG_URI",
+              "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
+            },
+            {
+              "name": "GEOCATALOG_API_VERSION",
+              "value": "2025-04-30-preview"
+            },
+            {
+              "name": "ENTRA_TENANT_ID",
+              "value": "[parameters('entraTenantId')]"
+            },
+            {
+              "name": "ENTRA_CLIENT_ID",
+              "value": "[parameters('entraClientId')]"
+            },
+            {
+              "name": "FOUNDRY_ENDPOINT",
+              "value": "[if(parameters('deployAiAgent'), reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), '2024-10-01').endpoint, '')]"
+            },
+            {
+              "name": "FOUNDRY_DEPLOYMENT",
+              "value": "[if(parameters('deployAiAgent'), parameters('openAiDeploymentName'), '')]"
+            },
+            {
+              "name": "AURORA_ENDPOINT",
+              "value": "[if(parameters('deployAuroraModel'), reference(resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName')), '2023-10-01').scoringUri, '')]"
+            },
+            {
+              "name": "SAMPLE_CONTAINER_URL",
+              "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), '')]"
+            },
+            {
+              "name": "UPLOAD_CONTAINER_URL",
+              "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('modelOutputsContainerName')), '')]"
+            },
+            {
+              "name": "UPLOAD_CONTAINER_NAME",
+              "value": "[variables('modelOutputsContainerName')]"
+            }
+          ]
+        }
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",
         "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
-        "[resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))]"
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
       ]
     }
   ],
@@ -850,14 +545,6 @@
         "description": "Open the GeoCatalog in the portal and copy the GeoCatalog URI from the Overview blade; use it as GEOCATALOG_URL for the ingest script and Explorer."
       },
       "value": "[format('Portal → {0} → Overview → GeoCatalog URI', variables('effectiveGeoCatalogName'))]"
-    },
-    "workstationName": {
-      "type": "string",
-      "value": "[if(parameters('deployWorkstation'), variables('workstationName'), 'not-deployed')]"
-    },
-    "bastionName": {
-      "type": "string",
-      "value": "[if(variables('networkNeeded'), variables('bastionName'), 'not-deployed')]"
     },
     "sampleStorageAccount": {
       "type": "string",
@@ -899,23 +586,16 @@
       "type": "string",
       "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, 'not-deployed')]"
     },
+    "webAppName": {
+      "type": "string",
+      "value": "[if(parameters('deployWebApp'), variables('webAppName'), 'not-deployed')]"
+    },
     "webAppUrl": {
       "type": "string",
-      "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName')), '2023-12-01').defaultHostname), 'not-deployed')]"
-    },
-    "webAppDeployHint": {
-      "type": "string",
       "metadata": {
-        "description": "How the sample web app is published. When a GitHub PAT was supplied, the deploy wired the token + build variables and triggered CI/CD automatically; otherwise wire them in GitHub manually."
+        "description": "Public URL of the web app. Deploy application code with `az webapp up` (or CI/CD) from the webapp/ folder; Oryx runs npm install + npm run build and starts `node server.mjs`."
       },
-      "value": "[if(parameters('deployWebApp'), if(variables('wireGithub'), 'Auto-wired: GitHub Actions was configured and the first build triggered. Watch the Actions tab; the site publishes to the URL above.', 'Manual: set GitHub secret AZURE_STATIC_WEB_APPS_API_TOKEN + VITE_* variables and push, or re-deploy with a GitHub PAT to auto-wire.'), 'not-deployed')]"
-    },
-    "webAppRegion": {
-      "type": "string",
-      "metadata": {
-        "description": "Region the Static Web App was placed in. Co-located with the main deployment region when Static Web Apps supports it, otherwise the nearest supported region."
-      },
-      "value": "[if(parameters('deployWebApp'), variables('effectiveStaticWebAppLocation'), 'not-deployed')]"
+      "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName), 'not-deployed')]"
     }
   }
 }
