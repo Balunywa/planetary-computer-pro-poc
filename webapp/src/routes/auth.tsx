@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Building2, Loader2, ShieldCheck, Wind } from "lucide-react";
 
@@ -38,14 +38,10 @@ function safePath(value: string | undefined) {
 }
 
 function AuthPage() {
-  const navigate = useNavigate();
   const search = Route.useSearch();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<null | "entra" | "email">(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const configured = auth.isConfigured();
 
   useEffect(() => {
     void auth.getSession().then(({ data }) => {
@@ -55,32 +51,15 @@ function AuthPage() {
 
   async function signInWithEntra() {
     setError(null);
-    setBusy("entra");
+    setBusy(true);
+    // Remember where to land once the identity platform redirects back.
+    sessionStorage.setItem("post-auth-path", safePath(search.redirect));
     const { error: err } = await auth.signInWithEntra();
-    setBusy(null);
     if (err) {
+      setBusy(false);
       setError(err.message);
-      return;
     }
-    window.location.replace(safePath(search.redirect));
-  }
-
-  async function submitEmail(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setNotice(null);
-    setBusy("email");
-    if (mode === "signup") {
-      const { error: err } = await auth.signUp({ email, password });
-      setBusy(null);
-      if (err) return setError(err.message);
-      void navigate({ to: safePath(search.redirect) as "/app", replace: true });
-      return;
-    }
-    const { error: err } = await auth.signInWithPassword({ email, password });
-    setBusy(null);
-    if (err) return setError(err.message);
-    void navigate({ to: safePath(search.redirect) as "/app", replace: true });
+    // On success the browser navigates to Entra; nothing else runs here.
   }
 
   return (
@@ -129,10 +108,10 @@ function AuthPage() {
 
           <button
             onClick={() => void signInWithEntra()}
-            disabled={busy !== null}
+            disabled={busy || !configured}
             className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-sm border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-60"
           >
-            {busy === "entra" ? (
+            {busy ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <svg viewBox="0 0 23 23" className="size-4" aria-hidden>
@@ -145,63 +124,21 @@ function AuthPage() {
             Sign in with Microsoft Entra ID
           </button>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Recommended. Uses your organisation's directory, MFA and conditional access.
+            Uses your organisation's directory, MFA and conditional access.
           </p>
 
-          <div className="my-6 flex items-center gap-3 text-[11px] text-muted-foreground">
-            <span className="h-px flex-1 bg-border" />
-            or pilot access
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          <form onSubmit={submitEmail} className="space-y-3">
-            <div>
-              <label htmlFor="email" className="text-[11px] text-muted-foreground">
-                Work email
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 w-full rounded-sm border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-                placeholder="name@operator.com"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="text-[11px] text-muted-foreground">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 w-full rounded-sm border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-                placeholder="••••••••"
-              />
-            </div>
-            {error ? <p className="text-xs text-risk-critical">{error}</p> : null}
-            {notice ? <p className="text-xs text-risk-monitor">{notice}</p> : null}
-            <button
-              type="submit"
-              disabled={busy !== null}
-              className="flex w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-            >
-              {busy === "email" ? <Loader2 className="size-4 animate-spin" /> : null}
-              {mode === "signin" ? "Sign in" : "Create pilot account"}
-            </button>
-          </form>
-
-          <button
-            onClick={() => setMode((m) => (m === "signin" ? "signup" : "signin"))}
-            className="mt-3 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            {mode === "signin" ? "Need a pilot account? Sign up" : "Already have an account? Sign in"}
-          </button>
+          {error ? <p className="mt-3 text-xs text-risk-critical">{error}</p> : null}
+          {!configured ? (
+            <p className="mt-3 rounded-sm border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
+              Sign-in isn't configured for this environment yet. Set{" "}
+              <code className="font-mono">ENTRA_CLIENT_ID</code> and{" "}
+              <code className="font-mono">ENTRA_TENANT_ID</code>, or explore the{" "}
+              <Link to="/demo" className="text-primary hover:underline">
+                open demo
+              </Link>{" "}
+              — no sign-in required.
+            </p>
+          ) : null}
 
           <p className="mt-8 text-[11px] text-muted-foreground">
             Just exploring?{" "}

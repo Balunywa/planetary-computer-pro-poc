@@ -112,6 +112,7 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en" className="dark">
       <head>
         <HeadContent />
+        <RuntimeConfigScript />
       </head>
       <body>
         {children}
@@ -119,6 +120,22 @@ function RootShell({ children }: { children: ReactNode }) {
       </body>
     </html>
   );
+}
+
+/**
+ * Publishes the deployment's public Entra IDs to the browser at runtime so the
+ * SPA can sign in without a rebuild. Rendered on the server only; the client
+ * already has window.__APP_CONFIG__ from the server-rendered HTML. The client
+ * id and tenant id are public identifiers, not secrets.
+ */
+function RuntimeConfigScript() {
+  if (typeof process === "undefined") return null;
+  const config = {
+    entraClientId: process.env["ENTRA_CLIENT_ID"] ?? "",
+    entraTenantId: process.env["ENTRA_TENANT_ID"] ?? "",
+  };
+  const json = JSON.stringify(config).replace(/</g, "\\u003c");
+  return <script dangerouslySetInnerHTML={{ __html: `window.__APP_CONFIG__=${json}` }} />;
 }
 
 function RootComponent() {
