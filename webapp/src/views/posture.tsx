@@ -4,9 +4,10 @@ import { Check, Circle, Loader2, Minus, RotateCcw } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { RiskBadge } from "@/components/ops/RiskBadge";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { postureQuery, useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { POSTURE_GATES, POSTURE_LEVEL_LABEL, gateStateLabel } from "@/lib/services/posture";
-import { services } from "@/lib/services";
+import { getServices } from "@/lib/services";
 import { ASSET_TYPE_LABEL, STATUS_LABEL, relativeTime, riskColorVar } from "@/lib/format";
 import type { GateId, GateState, OperatingStatus, PostureLevel } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
@@ -72,8 +73,9 @@ function GateCell({
 
 export function PosturePage() {
   const qc = useQueryClient();
-  const { assets, riskMap, event } = useOpsSnapshot(120);
-  const postures = useQuery(postureQuery).data ?? [];
+  const base = useOpsBase();
+  const { assets, riskMap, event } = useOpsSnapshot(base, 120);
+  const postures = useQuery(postureQuery(base)).data ?? [];
   const [onlyActive, setOnlyActive] = useState(true);
 
   const rows = useMemo(() => {
@@ -105,16 +107,16 @@ export function PosturePage() {
   const shutIn = postures.filter((p) => p.productionStatus === "shut_in" || p.productionStatus === "evacuating").length;
 
   async function cycleGate(assetId: string, gate: GateId, state: GateState) {
-    await services.posture.setGate(assetId, gate, NEXT_STATE[state]);
-    await qc.invalidateQueries({ queryKey: ["posture"] });
+    await getServices(base).posture.setGate(assetId, gate, NEXT_STATE[state]);
+    await qc.invalidateQueries({ queryKey: [base, "posture"] });
   }
   async function setStatus(assetId: string, status: OperatingStatus) {
-    await services.posture.setProductionStatus(assetId, status);
-    await qc.invalidateQueries({ queryKey: ["posture"] });
+    await getServices(base).posture.setProductionStatus(assetId, status);
+    await qc.invalidateQueries({ queryKey: [base, "posture"] });
   }
   async function reset() {
-    await services.posture.resetOverrides();
-    await qc.invalidateQueries({ queryKey: ["posture"] });
+    await getServices(base).posture.resetOverrides();
+    await qc.invalidateQueries({ queryKey: [base, "posture"] });
   }
 
   return (

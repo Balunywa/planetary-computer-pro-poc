@@ -1,52 +1,69 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
+import type { OpsBase } from "@/components/ops/ops-nav";
 import type { Asset, AssetRisk, WeatherEvent } from "@/lib/domain/types";
-import { services } from "@/lib/services";
+import { getServices } from "@/lib/services";
 
-export const assetsQuery = queryOptions({
-  queryKey: ["assets"],
-  queryFn: () => services.assets.listAssets(),
-  staleTime: 5 * 60 * 1000,
-});
+// Queries are keyed by console base so the /demo (synthetic) and /app (tenant)
+// caches never collide, and each fetches from the provider set for that base.
 
-export const eventsQuery = queryOptions({
-  queryKey: ["events"],
-  queryFn: () => services.weather.listEvents(),
-  staleTime: 60 * 1000,
-});
-
-export const layersQuery = queryOptions({
-  queryKey: ["layers"],
-  queryFn: () => services.geospatial.listLayers(),
-  staleTime: 10 * 60 * 1000,
-});
-
-export const alertsQuery = queryOptions({
-  queryKey: ["alerts"],
-  queryFn: () => services.alerts.listAlerts(),
-  staleTime: 30 * 1000,
-});
-
-export const postureQuery = queryOptions({
-  queryKey: ["posture"],
-  queryFn: () => services.posture.listPostures(),
-  staleTime: 30 * 1000,
-});
-
-export const thresholdRulesQuery = queryOptions({
-  queryKey: ["threshold-rules"],
-  queryFn: () => services.thresholds.listRules(),
-  staleTime: 5 * 60 * 1000,
-});
-
-export function risksQuery(horizonHours: number) {
+export function assetsQuery(base: OpsBase) {
   return queryOptions({
-    queryKey: ["risks", horizonHours],
-    queryFn: () => services.risk.scoreEstate(horizonHours),
+    queryKey: [base, "assets"],
+    queryFn: () => getServices(base).assets.listAssets(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function eventsQuery(base: OpsBase) {
+  return queryOptions({
+    queryKey: [base, "events"],
+    queryFn: () => getServices(base).weather.listEvents(),
     staleTime: 60 * 1000,
   });
 }
+
+export function layersQuery(base: OpsBase) {
+  return queryOptions({
+    queryKey: [base, "layers"],
+    queryFn: () => getServices(base).geospatial.listLayers(),
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function alertsQuery(base: OpsBase) {
+  return queryOptions({
+    queryKey: [base, "alerts"],
+    queryFn: () => getServices(base).alerts.listAlerts(),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function postureQuery(base: OpsBase) {
+  return queryOptions({
+    queryKey: [base, "posture"],
+    queryFn: () => getServices(base).posture.listPostures(),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function thresholdRulesQuery(base: OpsBase) {
+  return queryOptions({
+    queryKey: [base, "threshold-rules"],
+    queryFn: () => getServices(base).thresholds.listRules(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function risksQuery(base: OpsBase, horizonHours: number) {
+  return queryOptions({
+    queryKey: [base, "risks", horizonHours],
+    queryFn: () => getServices(base).risk.scoreEstate(horizonHours),
+    staleTime: 60 * 1000,
+  });
+}
+
 
 export interface OpsSnapshot {
   assets: Asset[];
@@ -64,10 +81,10 @@ export interface OpsSnapshot {
   };
 }
 
-export function useOpsSnapshot(horizonHours = 72): OpsSnapshot {
-  const assets = useQuery(assetsQuery);
-  const events = useQuery(eventsQuery);
-  const risks = useQuery(risksQuery(horizonHours));
+export function useOpsSnapshot(base: OpsBase, horizonHours = 72): OpsSnapshot {
+  const assets = useQuery(assetsQuery(base));
+  const events = useQuery(eventsQuery(base));
+  const risks = useQuery(risksQuery(base, horizonHours));
 
   return useMemo(() => {
     const a = assets.data ?? [];

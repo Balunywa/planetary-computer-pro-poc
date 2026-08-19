@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { RiskBadge } from "@/components/ops/RiskBadge";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { assetsQuery, eventsQuery } from "@/lib/hooks/use-ops-data";
 import { useQuery } from "@tanstack/react-query";
 import { scoreAsset } from "@/lib/services/risk-engine";
@@ -14,8 +15,9 @@ import { riskColorVar } from "@/lib/format";
 const STOPS = [24, 48, 72, 120];
 
 export function TimelinePage() {
-  const assets = useQuery(assetsQuery).data ?? [];
-  const event = useQuery(eventsQuery).data?.[0];
+  const base = useOpsBase();
+  const assets = useQuery(assetsQuery(base)).data ?? [];
+  const event = useQuery(eventsQuery(base)).data?.[0];
   const [hour, setHour] = useState(48);
   const [playing, setPlaying] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ArrowRight, Filter, Sparkles, TrendingUp, X } from "lucide-react";
 
-import { OpsLink } from "@/components/ops/ops-nav";
+import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { AppShell } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { AssetDetailPanel } from "@/components/ops/AssetDetailPanel";
@@ -57,10 +57,11 @@ function Chip({
 }
 
 export function OverviewPage() {
-  const { assets, risks, riskMap, event, metrics } = useOpsSnapshot(72);
-  const alerts = useQuery(alertsQuery).data ?? [];
-  const postures = useQuery(postureQuery).data ?? [];
-  const rules = useQuery(thresholdRulesQuery).data ?? [];
+  const base = useOpsBase();
+  const { assets, risks, riskMap, event, metrics } = useOpsSnapshot(base, 72);
+  const alerts = useQuery(alertsQuery(base)).data ?? [];
+  const postures = useQuery(postureQuery(base)).data ?? [];
+  const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
 
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);

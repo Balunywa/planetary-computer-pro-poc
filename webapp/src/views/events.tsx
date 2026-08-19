@@ -3,12 +3,14 @@ import { useState } from "react";
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { RiskBadge } from "@/components/ops/RiskBadge";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { coords, relativeTime } from "@/lib/format";
 
 
 export function EventsPage() {
-  const { assets, risks, riskMap, event } = useOpsSnapshot(120);
+  const base = useOpsBase();
+  const { assets, risks, riskMap, event } = useOpsSnapshot(base, 120);
   const [selected, setSelected] = useState<string | null>(null);
   if (!event) return null;
 

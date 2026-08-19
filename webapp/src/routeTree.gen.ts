@@ -23,17 +23,6 @@ import { Route as RiskRouteImport } from './routes/risk'
 import { Route as ThresholdsRouteImport } from './routes/thresholds'
 import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as AuthCallbackRouteImport } from './routes/auth_.callback'
-import { Route as DemoIndexRouteImport } from './routes/demo.index'
-import { Route as DemoAlertsRouteImport } from './routes/demo.alerts'
-import { Route as DemoAssetsRouteImport } from './routes/demo.assets'
-import { Route as DemoCopilotRouteImport } from './routes/demo.copilot'
-import { Route as DemoDeploymentRouteImport } from './routes/demo.deployment'
-import { Route as DemoEventsRouteImport } from './routes/demo.events'
-import { Route as DemoMapRouteImport } from './routes/demo.map'
-import { Route as DemoPostureRouteImport } from './routes/demo.posture'
-import { Route as DemoRiskRouteImport } from './routes/demo.risk'
-import { Route as DemoThresholdsRouteImport } from './routes/demo.thresholds'
-import { Route as DemoTimelineRouteImport } from './routes/demo.timeline'
 import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/app.index'
 import { Route as AuthenticatedAppAlertsRouteImport } from './routes/_authenticated/app.alerts'
 import { Route as AuthenticatedAppAssetsRouteImport } from './routes/_authenticated/app.assets'
@@ -115,61 +104,6 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoIndexRoute = DemoIndexRouteImport.update({
-  id: '/demo/',
-  path: '/demo/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoAlertsRoute = DemoAlertsRouteImport.update({
-  id: '/demo/alerts',
-  path: '/demo/alerts',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoAssetsRoute = DemoAssetsRouteImport.update({
-  id: '/demo/assets',
-  path: '/demo/assets',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoCopilotRoute = DemoCopilotRouteImport.update({
-  id: '/demo/copilot',
-  path: '/demo/copilot',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoDeploymentRoute = DemoDeploymentRouteImport.update({
-  id: '/demo/deployment',
-  path: '/demo/deployment',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoEventsRoute = DemoEventsRouteImport.update({
-  id: '/demo/events',
-  path: '/demo/events',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoMapRoute = DemoMapRouteImport.update({
-  id: '/demo/map',
-  path: '/demo/map',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoPostureRoute = DemoPostureRouteImport.update({
-  id: '/demo/posture',
-  path: '/demo/posture',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoRiskRoute = DemoRiskRouteImport.update({
-  id: '/demo/risk',
-  path: '/demo/risk',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoThresholdsRoute = DemoThresholdsRouteImport.update({
-  id: '/demo/thresholds',
-  path: '/demo/thresholds',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoTimelineRoute = DemoTimelineRouteImport.update({
-  id: '/demo/timeline',
-  path: '/demo/timeline',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthenticatedAppIndexRoute = AuthenticatedAppIndexRouteImport.update({
   id: '/app/',
   path: '/app/',
@@ -243,17 +177,6 @@ export interface FileRoutesByFullPath {
   '/thresholds': typeof ThresholdsRoute
   '/timeline': typeof TimelineRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/demo/alerts': typeof DemoAlertsRoute
-  '/demo/assets': typeof DemoAssetsRoute
-  '/demo/copilot': typeof DemoCopilotRoute
-  '/demo/deployment': typeof DemoDeploymentRoute
-  '/demo/events': typeof DemoEventsRoute
-  '/demo/map': typeof DemoMapRoute
-  '/demo/posture': typeof DemoPostureRoute
-  '/demo/risk': typeof DemoRiskRoute
-  '/demo/thresholds': typeof DemoThresholdsRoute
-  '/demo/timeline': typeof DemoTimelineRoute
-  '/demo/': typeof DemoIndexRoute
   '/app/alerts': typeof AuthenticatedAppAlertsRoute
   '/app/assets': typeof AuthenticatedAppAssetsRoute
   '/app/copilot': typeof AuthenticatedAppCopilotRoute
@@ -280,17 +203,6 @@ export interface FileRoutesByTo {
   '/thresholds': typeof ThresholdsRoute
   '/timeline': typeof TimelineRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/demo/alerts': typeof DemoAlertsRoute
-  '/demo/assets': typeof DemoAssetsRoute
-  '/demo/copilot': typeof DemoCopilotRoute
-  '/demo/deployment': typeof DemoDeploymentRoute
-  '/demo/events': typeof DemoEventsRoute
-  '/demo/map': typeof DemoMapRoute
-  '/demo/posture': typeof DemoPostureRoute
-  '/demo/risk': typeof DemoRiskRoute
-  '/demo/thresholds': typeof DemoThresholdsRoute
-  '/demo/timeline': typeof DemoTimelineRoute
-  '/demo': typeof DemoIndexRoute
   '/app/alerts': typeof AuthenticatedAppAlertsRoute
   '/app/assets': typeof AuthenticatedAppAssetsRoute
   '/app/copilot': typeof AuthenticatedAppCopilotRoute
@@ -319,17 +231,6 @@ export interface FileRoutesById {
   '/thresholds': typeof ThresholdsRoute
   '/timeline': typeof TimelineRoute
   '/auth_/callback': typeof AuthCallbackRoute
-  '/demo/alerts': typeof DemoAlertsRoute
-  '/demo/assets': typeof DemoAssetsRoute
-  '/demo/copilot': typeof DemoCopilotRoute
-  '/demo/deployment': typeof DemoDeploymentRoute
-  '/demo/events': typeof DemoEventsRoute
-  '/demo/map': typeof DemoMapRoute
-  '/demo/posture': typeof DemoPostureRoute
-  '/demo/risk': typeof DemoRiskRoute
-  '/demo/thresholds': typeof DemoThresholdsRoute
-  '/demo/timeline': typeof DemoTimelineRoute
-  '/demo/': typeof DemoIndexRoute
   '/_authenticated/app/alerts': typeof AuthenticatedAppAlertsRoute
   '/_authenticated/app/assets': typeof AuthenticatedAppAssetsRoute
   '/_authenticated/app/copilot': typeof AuthenticatedAppCopilotRoute
@@ -358,17 +259,6 @@ export interface FileRouteTypes {
     | '/thresholds'
     | '/timeline'
     | '/auth/callback'
-    | '/demo/alerts'
-    | '/demo/assets'
-    | '/demo/copilot'
-    | '/demo/deployment'
-    | '/demo/events'
-    | '/demo/map'
-    | '/demo/posture'
-    | '/demo/risk'
-    | '/demo/thresholds'
-    | '/demo/timeline'
-    | '/demo/'
     | '/app/alerts'
     | '/app/assets'
     | '/app/copilot'
@@ -395,17 +285,6 @@ export interface FileRouteTypes {
     | '/thresholds'
     | '/timeline'
     | '/auth/callback'
-    | '/demo/alerts'
-    | '/demo/assets'
-    | '/demo/copilot'
-    | '/demo/deployment'
-    | '/demo/events'
-    | '/demo/map'
-    | '/demo/posture'
-    | '/demo/risk'
-    | '/demo/thresholds'
-    | '/demo/timeline'
-    | '/demo'
     | '/app/alerts'
     | '/app/assets'
     | '/app/copilot'
@@ -433,17 +312,6 @@ export interface FileRouteTypes {
     | '/thresholds'
     | '/timeline'
     | '/auth_/callback'
-    | '/demo/alerts'
-    | '/demo/assets'
-    | '/demo/copilot'
-    | '/demo/deployment'
-    | '/demo/events'
-    | '/demo/map'
-    | '/demo/posture'
-    | '/demo/risk'
-    | '/demo/thresholds'
-    | '/demo/timeline'
-    | '/demo/'
     | '/_authenticated/app/alerts'
     | '/_authenticated/app/assets'
     | '/_authenticated/app/copilot'
@@ -472,17 +340,6 @@ export interface RootRouteChildren {
   ThresholdsRoute: typeof ThresholdsRoute
   TimelineRoute: typeof TimelineRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
-  DemoAlertsRoute: typeof DemoAlertsRoute
-  DemoAssetsRoute: typeof DemoAssetsRoute
-  DemoCopilotRoute: typeof DemoCopilotRoute
-  DemoDeploymentRoute: typeof DemoDeploymentRoute
-  DemoEventsRoute: typeof DemoEventsRoute
-  DemoMapRoute: typeof DemoMapRoute
-  DemoPostureRoute: typeof DemoPostureRoute
-  DemoRiskRoute: typeof DemoRiskRoute
-  DemoThresholdsRoute: typeof DemoThresholdsRoute
-  DemoTimelineRoute: typeof DemoTimelineRoute
-  DemoIndexRoute: typeof DemoIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -583,83 +440,6 @@ declare module '@tanstack/react-router' {
       path: '/auth/callback'
       fullPath: '/auth/callback'
       preLoaderRoute: typeof AuthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/': {
-      id: '/demo/'
-      path: '/demo'
-      fullPath: '/demo/'
-      preLoaderRoute: typeof DemoIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/alerts': {
-      id: '/demo/alerts'
-      path: '/demo/alerts'
-      fullPath: '/demo/alerts'
-      preLoaderRoute: typeof DemoAlertsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/assets': {
-      id: '/demo/assets'
-      path: '/demo/assets'
-      fullPath: '/demo/assets'
-      preLoaderRoute: typeof DemoAssetsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/copilot': {
-      id: '/demo/copilot'
-      path: '/demo/copilot'
-      fullPath: '/demo/copilot'
-      preLoaderRoute: typeof DemoCopilotRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/deployment': {
-      id: '/demo/deployment'
-      path: '/demo/deployment'
-      fullPath: '/demo/deployment'
-      preLoaderRoute: typeof DemoDeploymentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/events': {
-      id: '/demo/events'
-      path: '/demo/events'
-      fullPath: '/demo/events'
-      preLoaderRoute: typeof DemoEventsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/map': {
-      id: '/demo/map'
-      path: '/demo/map'
-      fullPath: '/demo/map'
-      preLoaderRoute: typeof DemoMapRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/posture': {
-      id: '/demo/posture'
-      path: '/demo/posture'
-      fullPath: '/demo/posture'
-      preLoaderRoute: typeof DemoPostureRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/risk': {
-      id: '/demo/risk'
-      path: '/demo/risk'
-      fullPath: '/demo/risk'
-      preLoaderRoute: typeof DemoRiskRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/thresholds': {
-      id: '/demo/thresholds'
-      path: '/demo/thresholds'
-      fullPath: '/demo/thresholds'
-      preLoaderRoute: typeof DemoThresholdsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/timeline': {
-      id: '/demo/timeline'
-      path: '/demo/timeline'
-      fullPath: '/demo/timeline'
-      preLoaderRoute: typeof DemoTimelineRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/app/': {
@@ -788,17 +568,6 @@ const rootRouteChildren: RootRouteChildren = {
   ThresholdsRoute: ThresholdsRoute,
   TimelineRoute: TimelineRoute,
   AuthCallbackRoute: AuthCallbackRoute,
-  DemoAlertsRoute: DemoAlertsRoute,
-  DemoAssetsRoute: DemoAssetsRoute,
-  DemoCopilotRoute: DemoCopilotRoute,
-  DemoDeploymentRoute: DemoDeploymentRoute,
-  DemoEventsRoute: DemoEventsRoute,
-  DemoMapRoute: DemoMapRoute,
-  DemoPostureRoute: DemoPostureRoute,
-  DemoRiskRoute: DemoRiskRoute,
-  DemoThresholdsRoute: DemoThresholdsRoute,
-  DemoTimelineRoute: DemoTimelineRoute,
-  DemoIndexRoute: DemoIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

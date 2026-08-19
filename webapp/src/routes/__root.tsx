@@ -133,6 +133,9 @@ function RuntimeConfigScript() {
   const config = {
     entraClientId: process.env["ENTRA_CLIENT_ID"] ?? "",
     entraTenantId: process.env["ENTRA_TENANT_ID"] ?? "",
+    geoCatalogUrl: process.env["GEOCATALOG_URI"] ?? "",
+    foundryEndpoint: process.env["FOUNDRY_ENDPOINT"] ?? "",
+    foundryDeployment: process.env["FOUNDRY_DEPLOYMENT"] ?? "",
   };
   const json = JSON.stringify(config).replace(/</g, "\\u003c");
   return <script dangerouslySetInnerHTML={{ __html: `window.__APP_CONFIG__=${json}` }} />;

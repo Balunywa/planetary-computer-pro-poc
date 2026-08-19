@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Building2, Loader2, ShieldCheck, Wind } from "lucide-react";
+import { Loader2, Wind } from "lucide-react";
 
 import { auth } from "@/lib/auth/session";
 
@@ -63,53 +63,25 @@ function AuthPage() {
   }
 
   return (
-    <div className="grid min-h-screen bg-background text-foreground lg:grid-cols-[1.1fr_1fr]">
-      <div className="hidden flex-col justify-between border-r bg-surface p-10 lg:flex">
-        <Link to="/" className="flex items-center gap-2.5">
-          <span className="grid size-8 place-items-center rounded-sm bg-primary text-primary-foreground">
-            <Wind className="size-4" />
-          </span>
-          <span className="text-sm font-semibold tracking-tight">Asset Weather Ops</span>
-        </Link>
-        <div className="max-w-md">
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Your tenant. Your assets. Your identity provider.
-          </h2>
-          <p className="mt-3 text-sm text-muted-foreground">
-            The console runs inside your Azure subscription. Sign-in is delegated to Microsoft Entra ID, so
-            access, conditional access policies, MFA and offboarding stay under your directory's control.
-          </p>
-          <ul className="mt-6 space-y-3 text-xs text-muted-foreground">
-            <li className="flex gap-2.5">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
-              Entra ID single sign-on with app roles mapped to viewer, approver and administrator.
-            </li>
-            <li className="flex gap-2.5">
-              <Building2 className="mt-0.5 size-4 shrink-0 text-primary" />
-              Multi-tenant by construction — every record is scoped to your directory tenant.
-            </li>
-          </ul>
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          No account yet?{" "}
-          <Link to="/demo" className="text-primary hover:underline">
-            Explore the open demo
-          </Link>{" "}
-          — no sign-in, synthetic sample data.
-        </p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-surface px-4 py-10 text-foreground">
+      <div className="w-full max-w-[440px]">
+        <div className="rounded-lg border bg-card p-8 shadow-sm sm:p-10">
+          <Link to="/" className="flex items-center gap-2.5">
+            <span className="grid size-8 place-items-center rounded-sm bg-primary text-primary-foreground">
+              <Wind className="size-4" />
+            </span>
+            <span className="text-sm font-semibold tracking-tight">Asset Weather Ops</span>
+          </Link>
 
-      <div className="flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Operations console for your asset estate.
+          <h1 className="mt-8 text-2xl font-semibold tracking-tight">Sign in</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Use your work or school account to continue.
           </p>
 
           <button
             onClick={() => void signInWithEntra()}
             disabled={busy || !configured}
-            className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-sm border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-60"
+            className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-sm border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? (
               <Loader2 className="size-4 animate-spin" />
@@ -121,33 +93,22 @@ function AuthPage() {
                 <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
               </svg>
             )}
-            Sign in with Microsoft Entra ID
+            Sign in with Microsoft
           </button>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Uses your organisation's directory, MFA and conditional access.
-          </p>
 
-          {error ? <p className="mt-3 text-xs text-risk-critical">{error}</p> : null}
+          {error ? <p className="mt-4 text-sm text-risk-critical">{error}</p> : null}
           {!configured ? (
-            <p className="mt-3 rounded-sm border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
+            <p className="mt-4 rounded-sm border border-dashed px-3 py-2 text-xs text-muted-foreground">
               Sign-in isn't configured for this environment yet. Set{" "}
               <code className="font-mono">ENTRA_CLIENT_ID</code> and{" "}
-              <code className="font-mono">ENTRA_TENANT_ID</code>, or explore the{" "}
-              <Link to="/demo" className="text-primary hover:underline">
-                open demo
-              </Link>{" "}
-              — no sign-in required.
+              <code className="font-mono">ENTRA_TENANT_ID</code> for this deployment.
             </p>
           ) : null}
-
-          <p className="mt-8 text-[11px] text-muted-foreground">
-            Just exploring?{" "}
-            <Link to="/demo" className="text-primary hover:underline">
-              Open the live demo
-            </Link>{" "}
-            — no sign-in required.
-          </p>
         </div>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Protected by Microsoft Entra ID · MFA and conditional access enforced by your directory.
+        </p>
       </div>
     </div>
   );

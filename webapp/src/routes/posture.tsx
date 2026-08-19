@@ -2,6 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/posture")({
   beforeLoad: () => {
-    throw redirect({ to: "/demo/posture" });
+    throw redirect({ to: "/app/posture" });
   },
 });

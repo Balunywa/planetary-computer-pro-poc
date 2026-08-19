@@ -3,8 +3,9 @@ import { Bot, CornerDownLeft, Sparkles, User } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
-import { services } from "@/lib/services";
+import { getServices } from "@/lib/services";
 import type { CopilotAnswer } from "@/lib/domain/types";
 
 
@@ -24,7 +25,8 @@ function renderMarkdownish(text: string) {
 }
 
 export function CopilotPage() {
-  const { assets, riskMap, event } = useOpsSnapshot(120);
+  const base = useOpsBase();
+  const { assets, riskMap, event } = useOpsSnapshot(base, 120);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +38,7 @@ export function CopilotPage() {
     setBusy(true);
     setTurns((t) => [...t, { role: "user", text: question }]);
     setInput("");
-    const answer = await services.copilot.ask(question);
+    const answer = await getServices(base).copilot.ask(question);
     setTurns((t) => [...t, { role: "assistant", text: answer.text, answer }]);
     setHighlight(answer.highlightAssetIds);
     setBusy(false);
@@ -57,7 +59,7 @@ export function CopilotPage() {
                   <Sparkles className="size-3.5 text-primary" /> Suggested questions
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {services.copilot.suggestions().map((s) => (
+                  {getServices(base).copilot.suggestions().map((s) => (
                     <button
                       key={s}
                       onClick={() => ask(s)}

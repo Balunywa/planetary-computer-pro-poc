@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
-import { OpsLink } from "@/components/ops/ops-nav";
+import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { alertsQuery, assetsQuery, thresholdRulesQuery, useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { METRIC_LABEL, METRIC_UNIT, evaluateRules } from "@/lib/services/thresholds";
-import { services } from "@/lib/services";
+import { getServices } from "@/lib/services";
 import { relativeTime, riskColorVar, utcStamp } from "@/lib/format";
 import type { AlertSeverity, OpsAlert } from "@/lib/domain/types";
 
@@ -19,10 +19,11 @@ const SEVERITY_TONE: Record<AlertSeverity, "critical" | "high" | "monitor" | "no
 
 export function AlertsPage() {
   const qc = useQueryClient();
-  const baseAlerts = useQuery(alertsQuery).data ?? [];
-  const assets = useQuery(assetsQuery).data ?? [];
-  const rules = useQuery(thresholdRulesQuery).data ?? [];
-  const { risks } = useOpsSnapshot(120);
+  const base = useOpsBase();
+  const baseAlerts = useQuery(alertsQuery(base)).data ?? [];
+  const assets = useQuery(assetsQuery(base)).data ?? [];
+  const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
+  const { risks } = useOpsSnapshot(base, 120);
   const [localStatus, setLocalStatus] = useState<Record<string, OpsAlert["status"]>>({});
 
   // Threshold breaches become first-class alerts, so the feed reflects the
@@ -69,8 +70,8 @@ export function AlertsPage() {
       setLocalStatus((s) => ({ ...s, [id]: next }));
       return;
     }
-    await services.alerts.setStatus(id, next);
-    await qc.invalidateQueries({ queryKey: ["alerts"] });
+    await getServices(base).alerts.setStatus(id, next);
+    await qc.invalidateQueries({ queryKey: [base, "alerts"] });
   }
 
   const counts = (["critical", "warning", "advisory", "info"] as AlertSeverity[]).map((s) => ({

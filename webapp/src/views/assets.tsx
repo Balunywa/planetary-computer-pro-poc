@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Check, Database, FileSpreadsheet, Globe, Layers, Plug, Server } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { assetsQuery } from "@/lib/hooks/use-ops-data";
 import { ASSET_TYPE_LABEL, STATUS_LABEL, coords } from "@/lib/format";
 
@@ -33,7 +34,8 @@ const SCHEMA = [
 ];
 
 export function AssetsPage() {
-  const assets = useQuery(assetsQuery).data ?? [];
+  const base = useOpsBase();
+  const assets = useQuery(assetsQuery(base)).data ?? [];
   const [q, setQ] = useState("");
 
   const rows = useMemo(

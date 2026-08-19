@@ -3,9 +3,10 @@ import { useMemo, useState } from "react";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { thresholdRulesQuery, useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { METRIC_LABEL, METRIC_UNIT, evaluateRules } from "@/lib/services/thresholds";
-import { services } from "@/lib/services";
+import { getServices } from "@/lib/services";
 import { ASSET_TYPE_LABEL, riskColorVar } from "@/lib/format";
 import type {
   AlertSeverity,
@@ -54,8 +55,9 @@ function blankRule(): ThresholdRule {
 
 export function ThresholdsPage() {
   const qc = useQueryClient();
-  const { assets, risks } = useOpsSnapshot(120);
-  const rules = useQuery(thresholdRulesQuery).data ?? [];
+  const base = useOpsBase();
+  const { assets, risks } = useOpsSnapshot(base, 120);
+  const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
   const [editing, setEditing] = useState<ThresholdRule | null>(null);
 
   const breaches = useMemo(() => evaluateRules(rules, assets, risks), [rules, assets, risks]);
@@ -68,17 +70,17 @@ export function ThresholdsPage() {
   }, [breaches]);
 
   async function save(rule: ThresholdRule) {
-    await services.thresholds.saveRule(rule);
-    await qc.invalidateQueries({ queryKey: ["threshold-rules"] });
+    await getServices(base).thresholds.saveRule(rule);
+    await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
     setEditing(null);
   }
   async function remove(id: string) {
-    await services.thresholds.deleteRule(id);
-    await qc.invalidateQueries({ queryKey: ["threshold-rules"] });
+    await getServices(base).thresholds.deleteRule(id);
+    await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
   }
   async function reset() {
-    await services.thresholds.resetRules();
-    await qc.invalidateQueries({ queryKey: ["threshold-rules"] });
+    await getServices(base).thresholds.resetRules();
+    await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
   }
 
   return (

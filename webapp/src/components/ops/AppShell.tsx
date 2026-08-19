@@ -66,7 +66,6 @@ export function AppShell({
   const { dark, toggle } = useTheme();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const base = useOpsBase();
-  const isDemo = base === "/demo";
   const auth = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -122,28 +121,14 @@ export function AppShell({
         </nav>
         <div className="border-t p-3 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-2">
-            <span className={cn("size-1.5 rounded-full", isDemo ? "bg-risk-elevated" : "bg-risk-monitor")} />
-            {isDemo ? "Synthetic sample dataset" : "Tenant dataset"}
+            <span className="size-1.5 rounded-full bg-risk-monitor" />
+            Tenant dataset
           </div>
           <div className="mt-1">Forecast refreshed 4 min ago</div>
-          <Link to="/" className="mt-2 inline-block text-[11px] text-primary hover:underline">
-            ← Back to site
-          </Link>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {isDemo ? (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-risk-elevated/40 bg-risk-elevated/10 px-4 py-1.5 text-[11px] text-risk-elevated">
-            <span className="font-semibold tracking-wide uppercase">Demo data</span>
-            <span className="text-muted-foreground">
-              Synthetic sample estate and a fictional storm. Not an operational forecast — do not use for decisions.
-            </span>
-            <Link to="/auth" className="ml-auto font-medium text-primary hover:underline">
-              Sign in with Microsoft to use tenant data →
-            </Link>
-          </div>
-        ) : null}
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-surface/95 px-4 backdrop-blur">
           <div className="lg:hidden">
             <select
@@ -157,14 +142,6 @@ export function AppShell({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
-            <span className="rounded-sm border border-risk-critical/40 bg-risk-critical/10 px-2 py-1 font-medium tracking-wide text-risk-critical uppercase">
-              Active event
-            </span>
-            <span className="text-foreground">Hurricane Gabrielle</span>
-            <span>·</span>
-            <span>Incident posture: Level 2</span>
           </div>
           <div className="ml-auto flex items-center gap-3">
             <button

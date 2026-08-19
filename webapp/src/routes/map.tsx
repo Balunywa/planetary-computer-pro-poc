@@ -2,6 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/map")({
   beforeLoad: () => {
-    throw redirect({ to: "/demo/map" });
+    throw redirect({ to: "/app/map" });
   },
 });

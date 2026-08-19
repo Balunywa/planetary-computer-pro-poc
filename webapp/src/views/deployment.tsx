@@ -8,7 +8,6 @@ const COMPONENTS = [
   { id: "geospatial", name: "Geospatial catalog & imagery", detail: "Satellite imagery, terrain and reference layers for the operating region", on: true },
   { id: "forecast", name: "Weather forecasting", detail: "Modular forecast providers; swap or blend models without UI changes", on: true },
   { id: "copilot", name: "AI operations assistant", detail: "Grounded natural-language answers and operational summaries", on: true },
-  { id: "sample", name: "Sample synthetic dataset", detail: "Synthetic oil & gas estate so the app is usable on day one", on: true },
   { id: "ingest", name: "Customer asset ingestion", detail: "Scheduled ingest from your GIS, storage and asset-master systems", on: true },
   { id: "private", name: "Private networking", detail: "Private endpoints and virtual network integration; no public data plane", on: false },
   { id: "monitoring", name: "Monitoring & diagnostics", detail: "Application telemetry, logs and operational dashboards", on: true },

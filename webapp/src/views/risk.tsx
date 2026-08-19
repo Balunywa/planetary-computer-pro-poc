@@ -5,6 +5,7 @@ import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { AssetDetailPanel } from "@/components/ops/AssetDetailPanel";
 import { RiskBadge } from "@/components/ops/RiskBadge";
+import { useOpsBase } from "@/components/ops/ops-nav";
 import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { ASSET_TYPE_LABEL, RISK_ORDER } from "@/lib/format";
 import type { RiskLevel } from "@/lib/domain/types";
@@ -13,7 +14,8 @@ import type { RiskLevel } from "@/lib/domain/types";
 type SortKey = "score" | "eta" | "name" | "wind";
 
 export function RiskPage() {
-  const { assets, risks, riskMap, event } = useOpsSnapshot(120);
+  const base = useOpsBase();
+  const { assets, risks, riskMap, event } = useOpsSnapshot(base, 120);
   const [q, setQ] = useState("");
   const [level, setLevel] = useState<RiskLevel | "all">("all");
   const [sort, setSort] = useState<SortKey>("score");
