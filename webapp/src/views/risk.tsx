@@ -5,6 +5,7 @@ import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { AssetDetailPanel } from "@/components/ops/AssetDetailPanel";
 import { RiskBadge } from "@/components/ops/RiskBadge";
+import { SkeletonRows } from "@/components/ops/Skeleton";
 import { useOpsBase } from "@/components/ops/ops-nav";
 import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { ASSET_TYPE_LABEL, RISK_ORDER } from "@/lib/format";
@@ -15,7 +16,7 @@ type SortKey = "score" | "eta" | "name" | "wind";
 
 export function RiskPage() {
   const base = useOpsBase();
-  const { assets, risks, riskMap, event } = useOpsSnapshot(base, 120);
+  const { assets, risks, riskMap, event, isLoading } = useOpsSnapshot(base, 120);
   const [q, setQ] = useState("");
   const [level, setLevel] = useState<RiskLevel | "all">("all");
   const [sort, setSort] = useState<SortKey>("score");
@@ -102,6 +103,7 @@ export function RiskPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {isLoading && rows.length === 0 && <SkeletonRows rows={10} cols={6} />}
                   {rows.map(({ risk, asset }) => (
                     <tr
                       key={asset.id}
@@ -124,7 +126,7 @@ export function RiskPage() {
                       </td>
                     </tr>
                   ))}
-                  {rows.length === 0 && (
+                  {!isLoading && rows.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                         {assets.length === 0

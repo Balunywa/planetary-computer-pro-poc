@@ -7,6 +7,7 @@ import { useOpsBase } from "@/components/ops/ops-nav";
 import { assetsQuery } from "@/lib/hooks/use-ops-data";
 import { getDataPlaneStatus, uploadAsset } from "@/lib/services/azure/server";
 import { ASSET_TYPE_LABEL, STATUS_LABEL, coords } from "@/lib/format";
+import { SkeletonRows } from "@/components/ops/Skeleton";
 
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -48,7 +49,8 @@ const SCHEMA = [
 
 export function AssetsPage() {
   const base = useOpsBase();
-  const assets = useQuery(assetsQuery(base)).data ?? [];
+  const assetsQ = useQuery(assetsQuery(base));
+  const assets = assetsQ.data ?? [];
   const [q, setQ] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
@@ -156,6 +158,7 @@ export function AssetsPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {assetsQ.isLoading && rows.length === 0 && <SkeletonRows rows={8} cols={5} />}
                   {rows.map((a) => (
                     <tr key={a.id} className="border-t">
                       <td className="num px-4 py-2 text-muted-foreground">{a.id}</td>
@@ -165,6 +168,15 @@ export function AssetsPage() {
                       <td className="px-4 py-2">{STATUS_LABEL[a.status]}</td>
                     </tr>
                   ))}
+                  {!assetsQ.isLoading && rows.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                        {assets.length === 0
+                          ? "No assets yet — upload a file or wire a source above to populate the register."
+                          : "No assets match your search."}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

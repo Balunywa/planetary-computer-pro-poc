@@ -8,6 +8,7 @@ import { OpsMap } from "@/components/ops/OpsMap";
 import { AssetDetailPanel } from "@/components/ops/AssetDetailPanel";
 import { DataOnboarding } from "@/components/ops/DataOnboarding";
 import { RiskBadge, StatCell } from "@/components/ops/RiskBadge";
+import { SkeletonRows } from "@/components/ops/Skeleton";
 import {
   alertsQuery,
   postureQuery,
@@ -59,7 +60,7 @@ function Chip({
 
 export function OverviewPage() {
   const base = useOpsBase();
-  const { assets, risks, riskMap, event, metrics } = useOpsSnapshot(base, 72);
+  const { assets, risks, riskMap, event, metrics, isLoading } = useOpsSnapshot(base, 72);
   const alerts = useQuery(alertsQuery(base)).data ?? [];
   const postures = useQuery(postureQuery(base)).data ?? [];
   const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
@@ -132,10 +133,16 @@ export function OverviewPage() {
               <h1 className="text-base font-semibold tracking-tight">
                 {event?.name ?? "No active event"} — 72 hour outlook
               </h1>
-              <p className="num mt-0.5 text-[11px] text-muted-foreground">
-                {event?.status} · moving {Math.round(event?.movementMph ?? 0)} mph ·{" "}
-                {event?.cycleId ?? "current cycle"} updated {event ? relativeTime(event.updatedAtIso) : "—"}
-              </p>
+              {event ? (
+                <p className="num mt-0.5 text-[11px] text-muted-foreground">
+                  {event.status} · moving {Math.round(event.movementMph)} mph · {event.cycleId} updated{" "}
+                  {relativeTime(event.updatedAtIso)}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  No active system in the current forecast cycle
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {event?.cycleShift && (
@@ -154,7 +161,7 @@ export function OverviewPage() {
             </div>
           </div>
           <div className="mt-2.5 grid grid-cols-2 border-t sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-            <StatCell label="Assets monitored" value={metrics.monitored} sub="Across 4 business units" />
+            <StatCell label="Assets monitored" value={metrics.monitored} sub="Across the asset register" />
             <StatCell label="Assets exposed" value={metrics.exposed} sub="Elevated risk or higher" />
             <StatCell label="Inside forecast cone" value={metrics.insideCone} sub="Projected impact corridor" />
             <StatCell label="High risk" value={metrics.high} tone="high" sub="Score 62–79" />
@@ -252,6 +259,7 @@ export function OverviewPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {isLoading && ranked.length === 0 && <SkeletonRows rows={8} cols={6} />}
                     {ranked.slice(0, 80).map((r) => {
                       const asset = assetById.get(r.assetId);
                       if (!asset) return null;
@@ -290,7 +298,7 @@ export function OverviewPage() {
                         </tr>
                       );
                     })}
-                    {ranked.length === 0 && (
+                    {!isLoading && ranked.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                           No assets match the current filters.
