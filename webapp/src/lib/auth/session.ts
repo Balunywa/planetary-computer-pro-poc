@@ -89,6 +89,17 @@ export const auth = {
     return { error: null };
   },
 
+  async signInWithEntra(): Promise<{ error: { message: string } | null }> {
+    const user = makeUser("operator@directory.local", "Directory Operator");
+    user.app_metadata = { provider: "azure" };
+    user.user_metadata = {
+      ...user.user_metadata,
+      tid: "00000000-0000-0000-0000-000000000000",
+    };
+    writeSession({ user });
+    return { error: null };
+  },
+
   async signUp(credentials: {
     email: string;
     password: string;

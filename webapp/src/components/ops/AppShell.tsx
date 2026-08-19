@@ -19,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { auth } from "@/lib/auth/session";
+import { auth as authClient } from "@/lib/auth/session";
 import { useQueryClient } from "@tanstack/react-query";
 
 const NAV = [
@@ -76,7 +76,7 @@ export function AppShell({
   async function signOut() {
     await queryClient.cancelQueries();
     queryClient.clear();
-    await auth.signOut();
+    await authClient.signOut();
     navigate({ to: "/auth", replace: true });
   }
 

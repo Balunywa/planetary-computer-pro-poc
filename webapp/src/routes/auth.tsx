@@ -56,10 +56,7 @@ function AuthPage() {
   async function signInWithEntra() {
     setError(null);
     setBusy("entra");
-    const { error: err } = await auth.signInWithPassword({
-      email: "operator@directory.local",
-      password: "single-sign-on",
-    });
+    const { error: err } = await auth.signInWithEntra();
     setBusy(null);
     if (err) {
       setError(err.message);
