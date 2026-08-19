@@ -336,6 +336,115 @@ For Microsoft's original notebooks, SDK, and the storm-impact application source
 [official repository](https://github.com/Azure/microsoft-planetary-computer-pro) separately —
 this POC's infrastructure (GeoCatalog URI, storage, identities) satisfies its prerequisites.
 
+## What data do *you* upload? (asset register vs. imagery)
+
+A common point of confusion: **you do not upload the storm, the wind field, the impact scores,
+or the alerts.** Those are produced by the app. There are two separate data planes, and as a
+customer you normally only supply the first one.
+
+### 1. Your asset register — the only thing most customers upload
+
+This is your infrastructure estate: where your platforms, wells, pipelines, refineries, LNG
+terminals, storage, and ports *are*, and how much each one matters. The app joins these
+locations to a weather forecast track and computes exposure per asset. Upload it as **CSV**
+(point assets) or **GeoJSON** ([IETF RFC 7946](https://datatracker.ietf.org/doc/html/rfc7946),
+for line/area geometry like pipeline corridors and lease blocks). Coordinates are decimal
+degrees, WGS 84 (EPSG:4326) — GeoJSON is `[longitude, latitude]` order per the RFC; CSV columns
+are named `latitude` / `longitude` so order can't be confused.
+
+Fields (only the first four are needed to place and score an asset):
+
+| Column | Type | Meaning | Required |
+| --- | --- | --- | --- |
+| `id` | string | Unique asset identifier | Required |
+| `name` | string | Operator-facing name | Required |
+| `type` | enum | `offshore_platform`, `pipeline`, `well`, `refinery`, `lng_terminal`, `storage`, `port` | Required |
+| `latitude` / `longitude` | number | Decimal degrees (WGS 84) | Required for point assets |
+| `geometry` | GeoJSON | Line/polygon for corridors and areas (instead of a point) | Optional |
+| `operator` | string | Operating company | Optional |
+| `region` | string | Operating region | Optional |
+| `business_unit` | string | Reporting business unit | Optional |
+| `operating_status` | enum | `producing`, `reduced`, `shut_in`, `evacuating`, `standby` | Optional |
+| `criticality` | enum | `standard`, `important`, `business_critical` | Drives risk weighting |
+| `metadata` | object | Design wind speed, capacity, personnel on board, water depth, etc. | Optional |
+
+Example CSV (point assets):
+
+```csv
+id,name,type,latitude,longitude,operator,region,operating_status,criticality
+PLT-D7,Platform Delta-7,offshore_platform,27.62,-90.35,Meridian Energy,Central Gulf,producing,business_critical
+WELL-1042,MC-252 #3,well,28.41,-89.42,Meridian Energy,Mississippi Canyon,producing,standard
+REF-01,Port Arthur Refinery,refinery,29.87,-93.93,Meridian Energy,Gulf Coast,producing,important
+```
+
+Example GeoJSON (a pipeline corridor — a line, not a point):
+
+```json
+{
+  "type": "Feature",
+  "geometry": {
+    "type": "LineString",
+    "coordinates": [[-90.35, 27.62], [-90.10, 28.05], [-89.42, 28.41]]
+  },
+  "properties": {
+    "id": "PIPE-17",
+    "name": "Mars-Ursa Trunkline",
+    "type": "pipeline",
+    "operator": "Meridian Energy",
+    "region": "Central Gulf",
+    "criticality": "important"
+  }
+}
+```
+
+**How it becomes "impact."** The app pairs each asset with the active forecast track and scores
+it purely from geography and attributes — nothing about the storm is uploaded by you:
+
+```
+your asset (lat, lon, type, criticality)  +  forecast track (lat, lon, wind, cone per hour)
+      │  great-circle distance from asset to the forecast centerline
+      │  forecast wind decays with distance from the storm core
+      │  + rainfall, time-to-impact, storm intensity, inside-cone,
+      │    your asset's criticality and type sensitivity
+      ▼
+   exposure score 0–100  →  level (normal → critical)  →  recommended actions & alerts
+```
+
+So the two things the engine needs *from you* are **where the asset is** and **how much it
+matters**. Everything downstream (score, ranking, alerts, recommended pre-storm actions) is
+computed, not uploaded.
+
+### 2. Imagery / rasters — optional, and a different format entirely
+
+The satellite/aerial basemap and any analytical rasters over your assets go through the
+**GeoCatalog**, not the asset-register upload. That plane uses the geospatial community
+standards, not CSV:
+
+- **Pixels:** Cloud-Optimized GeoTIFF (**COG**) — a profile of the [OGC GeoTIFF 1.1
+  standard](https://www.ogc.org/standard/geotiff/).
+- **Metadata:** **STAC** items ([SpatioTemporal Asset Catalog](https://stacspec.org/); a STAC
+  Item *is* a GeoJSON Feature, `stac_version` 1.0.0), posted to the GeoCatalog Items API.
+
+This is the flow described in **[Use your own data (managed-identity
+ingestion)](#use-your-own-data-managed-identity-ingestion)** above. It is **not required** for
+the asset-to-storm risk logic — that needs only your asset locations plus the forecast track.
+
+**Bottom line:** to see your estate scored against a storm, upload a **CSV/GeoJSON of your asset
+locations**. COG + STAC imagery is a separate, optional layer that draws the picture under the
+map.
+
+### Ready-to-use sample files
+
+Copy-paste starting points live in [`samples/`](samples/):
+
+- [`samples/sample-assets.csv`](samples/sample-assets.csv) — 11 Gulf of Mexico point assets
+  (platforms, wells, LNG terminal, refinery, storage, port) with the full column set.
+- [`samples/sample-assets.geojson`](samples/sample-assets.geojson) — a `FeatureCollection`
+  showing a point, a pipeline `LineString`, and a lease-block `Polygon` (RFC 7946, `[lon, lat]`).
+
+Upload either from the app's **Asset Management** page to see assets placed on the map and scored
+against the active forecast.
+
 ## What's in this repo
 
 | Path | Purpose |
