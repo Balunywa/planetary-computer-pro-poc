@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "6072526680654602503"
+      "templateHash": "6249318862313893681"
     }
   },
   "parameters": {
@@ -541,7 +541,7 @@
             },
             {
               "name": "GEOCATALOG_API_VERSION",
-              "value": "2025-04-30-preview"
+              "value": "2026-04-15"
             },
             {
               "name": "ENTRA_TENANT_ID",

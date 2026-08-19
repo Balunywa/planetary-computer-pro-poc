@@ -462,7 +462,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
         }
         {
           name: 'GEOCATALOG_API_VERSION'
-          value: '2025-04-30-preview'
+          value: '2026-04-15'
         }
         {
           name: 'ENTRA_TENANT_ID'

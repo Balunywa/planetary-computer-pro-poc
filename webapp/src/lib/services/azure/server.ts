@@ -11,11 +11,21 @@ import type { CopilotAnswer, GeospatialLayer, ThresholdRule } from "@/lib/domain
 const GEOCATALOG_RESOURCE = "https://geocatalog.spatio.azure.com";
 const COGNITIVE_RESOURCE = "https://cognitiveservices.azure.com";
 const STORAGE_RESOURCE = "https://storage.azure.com";
+const DEFAULT_GEOCATALOG_API_VERSION = "2026-04-15";
 
 // Public Microsoft Planetary Computer (open catalog) — used only as a source of
 // public sample imagery to pre-seed an empty tenant GeoCatalog. No auth needed to
 // search; asset hrefs are public blob URLs.
 const PUBLIC_PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1";
+
+function geoCatalogApiUrl(baseUrl: string, path: string): string {
+  const url = new URL(path, `${baseUrl.replace(/\/$/, "")}/`);
+  url.searchParams.set(
+    "api-version",
+    process.env["GEOCATALOG_API_VERSION"] || DEFAULT_GEOCATALOG_API_VERSION,
+  );
+  return url.toString();
+}
 
 /**
  * Acquire a Managed Identity access token for a resource. On Azure App Service
@@ -59,7 +69,7 @@ export const listStacLayers = createServerFn({ method: "GET" }).handler(
     if (!token) return [];
 
     try {
-      const res = await fetch(`${geoCatalogUrl.replace(/\/$/, "")}/stac/collections`, {
+      const res = await fetch(geoCatalogApiUrl(geoCatalogUrl, "stac/collections"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return [];
@@ -294,7 +304,7 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
       links: [],
     };
     try {
-      const cRes = await fetch(`${base}/stac/collections`, {
+      const cRes = await fetch(geoCatalogApiUrl(base, "stac/collections"), {
         method: "POST",
         headers: authJson,
         body: JSON.stringify(collection),
@@ -319,7 +329,7 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
       item["collection"] = collectionId;
       delete item["links"];
       try {
-        const iRes = await fetch(`${base}/stac/collections/${collectionId}/items`, {
+        const iRes = await fetch(geoCatalogApiUrl(base, `stac/collections/${collectionId}/items`), {
           method: "POST",
           headers: authJson,
           body: JSON.stringify(item),
