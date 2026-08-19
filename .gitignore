@@ -19,9 +19,18 @@ Thumbs.db
 *.parameters.local.json
 .env
 
-# Node / web app (pcp-web-sample)
+# Node / web app (webapp + pcp-web-sample)
 node_modules/
 dist/
+dist-ssr/
+.output/
+.nitro/
+.vinxi/
+.tanstack/
+.wrangler/
+.dev.vars
+*.local
 .env.local
 .env.*.local
+*.log
 npm-debug.log*
