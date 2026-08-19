@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "13838831413787364939"
+      "templateHash": "6072526680654602503"
     }
   },
   "parameters": {
@@ -585,6 +585,24 @@
         "geoCatalog",
         "openAi",
         "sampleStorage"
+      ]
+    },
+    "webAppAuth": {
+      "condition": "[parameters('deployWebApp')]",
+      "type": "Microsoft.Web/sites/config",
+      "apiVersion": "2023-12-01",
+      "name": "[format('{0}/{1}', variables('webAppName'), 'authsettingsV2')]",
+      "properties": {
+        "platform": {
+          "enabled": false
+        },
+        "globalValidation": {
+          "requireAuthentication": false,
+          "unauthenticatedClientAction": "AllowAnonymous"
+        }
+      },
+      "dependsOn": [
+        "webApp"
       ]
     }
   },

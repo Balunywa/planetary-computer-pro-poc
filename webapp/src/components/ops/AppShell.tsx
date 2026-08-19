@@ -1,4 +1,4 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
@@ -18,9 +18,6 @@ import {
 
 import { cn } from "@/lib/utils";
 import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
-import { useAuth } from "@/lib/hooks/use-auth";
-import { auth as authClient } from "@/lib/auth/session";
-import { useQueryClient } from "@tanstack/react-query";
 
 const NAV = [
   { to: "/", label: "Operations Overview", icon: LayoutGrid },
@@ -66,18 +63,8 @@ export function AppShell({
   const { dark, toggle } = useTheme();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const base = useOpsBase();
-  const auth = useAuth();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const href = (to: string) => (to === "/" ? base : `${base}${to}`);
-
-  async function signOut() {
-    await queryClient.cancelQueries();
-    queryClient.clear();
-    await authClient.signOut();
-    navigate({ to: "/auth", replace: true });
-  }
 
   return (
     <div
@@ -152,34 +139,6 @@ export function AppShell({
             >
               {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </button>
-            {auth.user ? (
-              <div className="flex items-center gap-2 border-l pl-3">
-                <div className="grid size-7 place-items-center rounded-full bg-secondary text-[11px] font-medium">
-                  {auth.initials}
-                </div>
-                <div className="hidden text-[11px] leading-tight sm:block">
-                  <div className="max-w-[160px] truncate font-medium">{auth.displayName}</div>
-                  <div className="text-muted-foreground">
-                    {auth.provider === "azure" ? "Microsoft Entra ID" : "Email sign-in"}
-                  </div>
-                </div>
-                <button
-                  onClick={() => void signOut()}
-                  className="ml-1 rounded-sm border px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 border-l pl-3">
-                <Link
-                  to="/auth"
-                  className="rounded-sm bg-primary px-2.5 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  Sign in
-                </Link>
-              </div>
-            )}
           </div>
         </header>
         <main className={cn("min-w-0 flex-1", fullHeight && "xl:min-h-0 xl:overflow-hidden")}>

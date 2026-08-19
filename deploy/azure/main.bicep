@@ -501,6 +501,20 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
   }
 }
 
+resource webAppAuth 'Microsoft.Web/sites/config@2023-12-01' = if (deployWebApp) {
+  parent: webApp
+  name: 'authsettingsV2'
+  properties: {
+    platform: {
+      enabled: false
+    }
+    globalValidation: {
+      requireAuthentication: false
+      unauthenticatedClientAction: 'AllowAnonymous'
+    }
+  }
+}
+
 // ------------------------------------------------------------------------------------
 // Outputs
 // ------------------------------------------------------------------------------------
