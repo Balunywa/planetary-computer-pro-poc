@@ -2,9 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Activity, Gauge, Layers, ShieldCheck } from "lucide-react";
 
 import { Card, Section, SiteChrome } from "@/components/site/SiteChrome";
-import { LandingConsole } from "@/components/site/LandingConsole";
+import { HeroConsole } from "@/components/site/HeroConsole";
 import { Reveal } from "@/components/site/Reveal";
-import { ScoreProof } from "@/components/site/ScoreProof";
 
 const TITLE = "Weather & Asset Risk Intelligence | Azure Accelerator";
 const DESC =
@@ -76,19 +75,10 @@ function LandingPage() {
               aria-hidden
               className="pointer-events-none absolute -inset-4 -z-10 rounded-2xl bg-primary/10 blur-2xl"
             />
-            <LandingConsole className="shadow-2xl shadow-primary/10 ring-1 ring-border/60" />
+            <HeroConsole />
           </div>
         </div>
       </section>
-
-      <Section
-        title="Every score opens up"
-        description="Live from the sample estate. This is the highest-exposure asset right now, with each factor's contribution to the number and the lead-time gates it triggers."
-      >
-        <Reveal>
-          <ScoreProof />
-        </Reveal>
-      </Section>
 
       <Section
         title="Built for the storm call, not the weather app"
