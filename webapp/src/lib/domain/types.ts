@@ -3,13 +3,7 @@
 // (Planetary Computer Pro, Aurora/ECMWF, AI Foundry) implement the same shapes.
 
 export type AssetType =
-  | "offshore_platform"
-  | "pipeline"
-  | "well"
-  | "refinery"
-  | "lng_terminal"
-  | "storage"
-  | "port";
+  "offshore_platform" | "pipeline" | "well" | "refinery" | "lng_terminal" | "storage" | "port";
 
 export type RiskLevel = "normal" | "monitor" | "elevated" | "high" | "critical";
 

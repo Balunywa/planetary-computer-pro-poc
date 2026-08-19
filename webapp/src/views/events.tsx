@@ -7,7 +7,6 @@ import { useOpsBase } from "@/components/ops/ops-nav";
 import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { coords, relativeTime } from "@/lib/format";
 
-
 export function EventsPage() {
   const base = useOpsBase();
   const { assets, risks, riskMap, event } = useOpsSnapshot(base, 120);
@@ -24,9 +23,9 @@ export function EventsPage() {
           <div className="panel flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
             <h2 className="text-sm font-semibold">No active weather events</h2>
             <p className="max-w-md text-[12px] leading-relaxed text-muted-foreground">
-              There are no tropical or severe-weather systems in the operating region for the current
-              forecast cycle. Active systems from the weather forecast provider will appear here with their
-              track, intensity and the assets they expose.
+              There are no tropical or severe-weather systems in the operating region for the
+              current forecast cycle. Active systems from the weather forecast provider will appear
+              here with their track, intensity and the assets they expose.
             </p>
           </div>
         </div>
@@ -60,7 +59,9 @@ export function EventsPage() {
               </div>
               <div className="text-right text-[11px] text-muted-foreground">
                 Forecast confidence
-                <div className="text-sm font-medium text-foreground capitalize">{event.confidence}</div>
+                <div className="text-sm font-medium text-foreground capitalize">
+                  {event.confidence}
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 divide-x divide-y sm:grid-cols-4">
@@ -111,7 +112,9 @@ export function EventsPage() {
                   <tr key={p.hour} className="border-t">
                     <td className="num px-4 py-2">+{p.hour} h</td>
                     <td className="num px-4 py-2 text-muted-foreground">{coords(p.lat, p.lon)}</td>
-                    <td className="px-4 py-2">{p.category > 0 ? `Category ${p.category}` : "Tropical storm"}</td>
+                    <td className="px-4 py-2">
+                      {p.category > 0 ? `Category ${p.category}` : "Tropical storm"}
+                    </td>
                     <td className="num px-4 py-2">{p.windMph} mph</td>
                     <td className="num px-4 py-2">{p.pressureMb} mb</td>
                     <td className="num px-4 py-2">{p.coneRadiusMi} mi</td>

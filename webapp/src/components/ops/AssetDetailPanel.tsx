@@ -52,7 +52,11 @@ export function AssetDetailPanel({
             {ASSET_TYPE_LABEL[asset.type]} · {asset.id} · {asset.operator}
           </div>
         </div>
-        <button onClick={onClose} className="rounded-sm p-1 text-muted-foreground hover:bg-accent" aria-label="Close">
+        <button
+          onClick={onClose}
+          className="rounded-sm p-1 text-muted-foreground hover:bg-accent"
+          aria-label="Close"
+        >
           <X className="size-4" />
         </button>
       </div>
@@ -60,13 +64,18 @@ export function AssetDetailPanel({
       {risk && (
         <div className="px-4 py-3">
           <div className="flex items-end gap-3">
-            <div className="num text-4xl leading-none font-semibold" style={{ color: riskColorVar(risk.level) }}>
+            <div
+              className="num text-4xl leading-none font-semibold"
+              style={{ color: riskColorVar(risk.level) }}
+            >
               {risk.score}
             </div>
             <div className="pb-1 text-[11px] text-muted-foreground">
               risk score / 100
               <br />
-              {risk.insideCone ? "Inside projected impact corridor" : "Outside projected impact corridor"}
+              {risk.insideCone
+                ? "Inside projected impact corridor"
+                : "Outside projected impact corridor"}
             </div>
           </div>
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -86,7 +95,11 @@ export function AssetDetailPanel({
         <Row label="Operating status" value={STATUS_LABEL[asset.status]} />
         <Row label="Criticality" value={asset.criticality.replace("_", " ")} />
         {Object.entries(asset.metadata).map(([k, v]) => (
-          <Row key={k} label={k.replace(/_/g, " ")} value={typeof v === "number" ? v.toLocaleString() : v} />
+          <Row
+            key={k}
+            label={k.replace(/_/g, " ")}
+            value={typeof v === "number" ? v.toLocaleString() : v}
+          />
         ))}
       </Section>
 
@@ -145,7 +158,9 @@ export function AssetDetailPanel({
                   className="flex w-full items-center justify-between rounded-sm px-1 py-1 text-left text-xs hover:bg-accent"
                 >
                   <span>{n.name}</span>
-                  <span className="text-[11px] text-muted-foreground">{ASSET_TYPE_LABEL[n.type]}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ASSET_TYPE_LABEL[n.type]}
+                  </span>
                 </button>
               </li>
             ))}

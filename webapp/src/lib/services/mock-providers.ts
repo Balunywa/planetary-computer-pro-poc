@@ -72,15 +72,70 @@ export class MockAlertService implements AlertService {
 export class MockPlanetaryComputerService implements PlanetaryComputerService {
   async listLayers(): Promise<GeospatialLayer[]> {
     return [
-      { id: "assets", name: "Company assets", description: "Platforms, pipelines, wells, terminals and ports", updatedLabel: "Synced 6 minutes ago", defaultOn: true },
-      { id: "track", name: "Storm track & forecast cone", description: "Observed track and projected impact corridor", updatedLabel: "Updated 4 minutes ago", defaultOn: true },
-      { id: "wind", name: "Severe wind field", description: "Hurricane and tropical-storm force wind extents", updatedLabel: "Updated 4 minutes ago", defaultOn: true },
-      { id: "uncertainty", name: "Forecast spread (ensemble)", description: "Alternative storm paths from the forecast ensemble — how much the track could still change", updatedLabel: "Updated 4 minutes ago", defaultOn: true },
-      { id: "previous", name: "Previous forecast cycle", description: "Where the last cycle put the storm, for cycle-over-cycle comparison", updatedLabel: "Superseded 6 hours ago", defaultOn: false },
-      { id: "rain", name: "Rainfall accumulation", description: "72-hour forecast rainfall totals", updatedLabel: "Updated 11 minutes ago", defaultOn: false },
-      { id: "flood", name: "Coastal flood exposure", description: "Surge and low-lying terrain exposure along the coast", updatedLabel: "Updated 38 minutes ago", defaultOn: false },
-      { id: "satellite", name: "Satellite imagery — Gulf of Mexico", description: "Latest cloud-free composite of the operating region", updatedLabel: "Captured 2 hours ago", defaultOn: false },
-      { id: "history", name: "Historical storm tracks", description: "Named storms crossing the estate since 1998", updatedLabel: "Reference dataset", defaultOn: false },
+      {
+        id: "assets",
+        name: "Company assets",
+        description: "Platforms, pipelines, wells, terminals and ports",
+        updatedLabel: "Synced 6 minutes ago",
+        defaultOn: true,
+      },
+      {
+        id: "track",
+        name: "Storm track & forecast cone",
+        description: "Observed track and projected impact corridor",
+        updatedLabel: "Updated 4 minutes ago",
+        defaultOn: true,
+      },
+      {
+        id: "wind",
+        name: "Severe wind field",
+        description: "Hurricane and tropical-storm force wind extents",
+        updatedLabel: "Updated 4 minutes ago",
+        defaultOn: true,
+      },
+      {
+        id: "uncertainty",
+        name: "Forecast spread (ensemble)",
+        description:
+          "Alternative storm paths from the forecast ensemble — how much the track could still change",
+        updatedLabel: "Updated 4 minutes ago",
+        defaultOn: true,
+      },
+      {
+        id: "previous",
+        name: "Previous forecast cycle",
+        description: "Where the last cycle put the storm, for cycle-over-cycle comparison",
+        updatedLabel: "Superseded 6 hours ago",
+        defaultOn: false,
+      },
+      {
+        id: "rain",
+        name: "Rainfall accumulation",
+        description: "72-hour forecast rainfall totals",
+        updatedLabel: "Updated 11 minutes ago",
+        defaultOn: false,
+      },
+      {
+        id: "flood",
+        name: "Coastal flood exposure",
+        description: "Surge and low-lying terrain exposure along the coast",
+        updatedLabel: "Updated 38 minutes ago",
+        defaultOn: false,
+      },
+      {
+        id: "satellite",
+        name: "Satellite imagery — Gulf of Mexico",
+        description: "Latest cloud-free composite of the operating region",
+        updatedLabel: "Captured 2 hours ago",
+        defaultOn: false,
+      },
+      {
+        id: "history",
+        name: "Historical storm tracks",
+        description: "Named storms crossing the estate since 1998",
+        updatedLabel: "Reference dataset",
+        defaultOn: false,
+      },
     ];
   }
 }
@@ -134,13 +189,20 @@ export class MockCopilotService implements CopilotService {
     }
 
     if (q.includes("pipeline")) {
-      const pipes = ranked.filter((r) => sampleAssets.find((a) => a.id === r.assetId)?.type === "pipeline" && r.insideCone);
+      const pipes = ranked.filter(
+        (r) => sampleAssets.find((a) => a.id === r.assetId)?.type === "pipeline" && r.insideCone,
+      );
       return {
         text:
           pipes.length === 0
             ? "No pipeline segments are currently inside the projected impact corridor."
             : `**${pipes.length} pipeline segment${pipes.length > 1 ? "s" : ""}** lie inside the projected impact corridor:\n\n` +
-              pipes.map((p) => `- **${nameOf(p.assetId)}** — ${p.score}/100, ${p.distanceMi} mi from the centerline, ${p.rainfallIn} in rainfall forecast, impact in ${p.hoursToImpact} h`).join("\n"),
+              pipes
+                .map(
+                  (p) =>
+                    `- **${nameOf(p.assetId)}** — ${p.score}/100, ${p.distanceMi} mi from the centerline, ${p.rainfallIn} in rainfall forecast, impact in ${p.hoursToImpact} h`,
+                )
+                .join("\n"),
         citations: [{ label: "Impact corridor intersection", kind: "dataset" }],
         highlightAssetIds: pipes.map((p) => p.assetId),
       };
@@ -151,7 +213,13 @@ export class MockCopilotService implements CopilotService {
       return {
         text:
           `**${near.length} assets** fall within 100 miles of the forecast track of ${sampleEvent.name}. The most exposed are:\n\n` +
-          near.slice(0, 6).map((r) => `- **${nameOf(r.assetId)}** — ${r.distanceMi} mi, ${r.forecastWindMph} mph, risk ${r.score}/100`).join("\n"),
+          near
+            .slice(0, 6)
+            .map(
+              (r) =>
+                `- **${nameOf(r.assetId)}** — ${r.distanceMi} mi, ${r.forecastWindMph} mph, risk ${r.score}/100`,
+            )
+            .join("\n"),
         citations: [{ label: "Track proximity analysis", kind: "dataset" }],
         highlightAssetIds: near.map((r) => r.assetId),
       };
@@ -176,14 +244,19 @@ export class MockCopilotService implements CopilotService {
     if (q.includes("leadership") || q.includes("summar") || q.includes("executive")) {
       const exposed = ranked.filter((r) => r.score >= 42);
       const inCone = ranked.filter((r) => r.insideCone);
-      const first = ranked.filter((r) => r.hoursToImpact !== null).sort((a, b) => (a.hoursToImpact! - b.hoursToImpact!))[0];
+      const first = ranked
+        .filter((r) => r.hoursToImpact !== null)
+        .sort((a, b) => a.hoursToImpact! - b.hoursToImpact!)[0];
       return {
         text:
           `**Gulf of Mexico — leadership summary**\n\n` +
           `${sampleEvent.name} is forecast to enter the central Gulf within 48 hours as a Category 4 system. ` +
           `**${exposed.length} assets** currently carry elevated risk or higher and **${inCone.length}** lie inside the projected impact corridor. ` +
           `First expected impact is in **${first?.hoursToImpact ?? "—"} hours**.\n\n` +
-          `Highest exposure: ${ranked.slice(0, 3).map((r) => `**${nameOf(r.assetId)}** (${r.score}/100)`).join(", ")}. ` +
+          `Highest exposure: ${ranked
+            .slice(0, 3)
+            .map((r) => `**${nameOf(r.assetId)}** (${r.score}/100)`)
+            .join(", ")}. ` +
           `Production at risk is concentrated in deepwater assets; downstream and LNG facilities remain in a monitoring posture pending the coastal track solution.`,
         citations: [
           { label: `${exposed.length} exposed assets`, kind: "risk" },
@@ -193,9 +266,12 @@ export class MockCopilotService implements CopilotService {
       };
     }
 
-    const scope = q.includes("platform") || q.includes("offshore")
-      ? ranked.filter((r) => sampleAssets.find((a) => a.id === r.assetId)?.type === "offshore_platform")
-      : ranked;
+    const scope =
+      q.includes("platform") || q.includes("offshore")
+        ? ranked.filter(
+            (r) => sampleAssets.find((a) => a.id === r.assetId)?.type === "offshore_platform",
+          )
+        : ranked;
     const top = scope.slice(0, 5);
     return {
       text:
@@ -314,7 +390,9 @@ export class MockThresholdService implements ThresholdService {
   async saveRule(rule: ThresholdRule): Promise<ThresholdRule[]> {
     const rules = this.load();
     const exists = rules.some((r) => r.id === rule.id);
-    return this.persist(exists ? rules.map((r) => (r.id === rule.id ? rule : r)) : [...rules, rule]);
+    return this.persist(
+      exists ? rules.map((r) => (r.id === rule.id ? rule : r)) : [...rules, rule],
+    );
   }
 
   async deleteRule(id: string): Promise<ThresholdRule[]> {

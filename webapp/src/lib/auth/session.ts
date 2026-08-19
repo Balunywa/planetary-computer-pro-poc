@@ -91,8 +91,7 @@ function activeAccount(app: PublicClientApplication): AccountInfo | null {
 
 function toUser(account: AccountInfo): AuthUser {
   const claims = (account.idTokenClaims ?? {}) as Record<string, unknown>;
-  const name =
-    (claims["name"] as string) || account.name || account.username || "Signed in";
+  const name = (claims["name"] as string) || account.name || account.username || "Signed in";
   return {
     id: account.localAccountId,
     email: account.username,

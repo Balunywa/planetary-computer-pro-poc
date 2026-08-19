@@ -192,6 +192,7 @@ export function evaluateRules(
 
   const rank = { critical: 0, warning: 1, advisory: 2, info: 3 } as const;
   return out.sort(
-    (a, b) => rank[a.severity] - rank[b.severity] || (a.hoursToImpact ?? 999) - (b.hoursToImpact ?? 999),
+    (a, b) =>
+      rank[a.severity] - rank[b.severity] || (a.hoursToImpact ?? 999) - (b.hoursToImpact ?? 999),
   );
 }

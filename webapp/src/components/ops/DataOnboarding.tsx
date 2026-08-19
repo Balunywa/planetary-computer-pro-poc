@@ -4,11 +4,7 @@ import { CheckCircle2, Database, Loader2, Sparkles, Upload } from "lucide-react"
 
 import { useOpsBase } from "@/components/ops/ops-nav";
 import { layersQuery } from "@/lib/hooks/use-ops-data";
-import {
-  getDataPlaneStatus,
-  seedPublicSample,
-  uploadAsset,
-} from "@/lib/services/azure/server";
+import { getDataPlaneStatus, seedPublicSample, uploadAsset } from "@/lib/services/azure/server";
 import { cn } from "@/lib/utils";
 
 // Shown when a tenant deployment has no assets yet. Lets an operator make the
@@ -85,8 +81,9 @@ export function DataOnboarding({ className }: { className?: string }) {
               <span className="text-sm font-medium">Upload data</span>
             </div>
             <p className="mt-1 flex-1 text-[11px] leading-relaxed text-muted-foreground">
-              Send a file to the deployment&apos;s <code className="text-[10px]">sample-assets</code>{" "}
-              container. Use it as a source for catalog ingestion.
+              Send a file to the deployment&apos;s{" "}
+              <code className="text-[10px]">sample-assets</code> container. Use it as a source for
+              catalog ingestion.
             </p>
             <input
               ref={fileInputRef}
@@ -104,11 +101,17 @@ export function DataOnboarding({ className }: { className?: string }) {
               onClick={() => fileInputRef.current?.click()}
               className="mt-3 inline-flex items-center justify-center gap-2 rounded-sm border border-primary/40 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {upload.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+              {upload.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Upload className="size-3.5" />
+              )}
               Choose file
             </button>
             {!uploadReady && status.isSuccess && (
-              <span className="mt-2 text-[10px] text-muted-foreground">Storage not wired for this deployment.</span>
+              <span className="mt-2 text-[10px] text-muted-foreground">
+                Storage not wired for this deployment.
+              </span>
             )}
           </div>
 
@@ -119,8 +122,8 @@ export function DataOnboarding({ className }: { className?: string }) {
               <span className="text-sm font-medium">Load public sample</span>
             </div>
             <p className="mt-1 flex-1 text-[11px] leading-relaxed text-muted-foreground">
-              Ingest a few public Sentinel-2 scenes over the Gulf of Mexico into a sample collection so
-              the map isn&apos;t empty.
+              Ingest a few public Sentinel-2 scenes over the Gulf of Mexico into a sample collection
+              so the map isn&apos;t empty.
             </p>
             <button
               type="button"
@@ -128,11 +131,17 @@ export function DataOnboarding({ className }: { className?: string }) {
               onClick={() => seed.mutate()}
               className="mt-3 inline-flex items-center justify-center gap-2 rounded-sm border border-primary/40 bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {seed.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              {seed.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="size-3.5" />
+              )}
               Load sample
             </button>
             {!catalogReady && status.isSuccess && (
-              <span className="mt-2 text-[10px] text-muted-foreground">GeoCatalog not wired for this deployment.</span>
+              <span className="mt-2 text-[10px] text-muted-foreground">
+                GeoCatalog not wired for this deployment.
+              </span>
             )}
           </div>
         </div>
@@ -152,7 +161,9 @@ export function DataOnboarding({ className }: { className?: string }) {
         )}
 
         <div className="mt-4 flex items-center justify-between border-t pt-3 text-[10px] text-muted-foreground">
-          <span>Catalog collections: <span className="num text-foreground">{layerCount}</span></span>
+          <span>
+            Catalog collections: <span className="num text-foreground">{layerCount}</span>
+          </span>
           <span>Assets are ingested from your GIS or uploaded above.</span>
         </div>
       </div>

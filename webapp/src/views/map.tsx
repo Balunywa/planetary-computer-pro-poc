@@ -11,7 +11,6 @@ import { layersQuery, useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { ASSET_TYPE_LABEL, RISK_ORDER } from "@/lib/format";
 import type { AssetType, RiskLevel } from "@/lib/domain/types";
 
-
 export function MapPage() {
   const base = useOpsBase();
   const { assets, riskMap, event } = useOpsSnapshot(base, 120);
@@ -41,7 +40,11 @@ export function MapPage() {
     () =>
       assets.filter((a) => {
         const risk = riskMap.get(a.id);
-        if (q && !`${a.name} ${a.id} ${a.region} ${a.operator}`.toLowerCase().includes(q.toLowerCase())) return false;
+        if (
+          q &&
+          !`${a.name} ${a.id} ${a.region} ${a.operator}`.toLowerCase().includes(q.toLowerCase())
+        )
+          return false;
         if (type !== "all" && a.type !== type) return false;
         if (unit !== "all" && a.businessUnit !== unit) return false;
         if (operator !== "all" && a.operator !== operator) return false;
@@ -52,7 +55,9 @@ export function MapPage() {
   );
 
   const selectedAsset = assets.find((a) => a.id === selected) ?? null;
-  const ranked = [...filtered].sort((a, b) => (riskMap.get(b.id)?.score ?? 0) - (riskMap.get(a.id)?.score ?? 0));
+  const ranked = [...filtered].sort(
+    (a, b) => (riskMap.get(b.id)?.score ?? 0) - (riskMap.get(a.id)?.score ?? 0),
+  );
 
   return (
     <AppShell>
@@ -93,8 +98,12 @@ export function MapPage() {
                     />
                     <span>
                       <span className="font-medium">{l.name}</span>
-                      <span className="block text-[11px] text-muted-foreground">{l.description}</span>
-                      <span className="block text-[10px] text-muted-foreground/80">{l.updatedLabel}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {l.description}
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground/80">
+                        {l.updatedLabel}
+                      </span>
                     </span>
                   </label>
                 </li>
@@ -112,7 +121,11 @@ export function MapPage() {
                 className="w-full rounded-sm border bg-card py-1.5 pr-2 pl-7 text-xs outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
-            <Select value={type} onChange={(v) => setType(v as AssetType | "all")} label="Asset type">
+            <Select
+              value={type}
+              onChange={(v) => setType(v as AssetType | "all")}
+              label="Asset type"
+            >
               <option value="all">All types</option>
               {Object.entries(ASSET_TYPE_LABEL).map(([k, v]) => (
                 <option key={k} value={k}>
@@ -120,7 +133,11 @@ export function MapPage() {
                 </option>
               ))}
             </Select>
-            <Select value={level} onChange={(v) => setLevel(v as RiskLevel | "all")} label="Risk level">
+            <Select
+              value={level}
+              onChange={(v) => setLevel(v as RiskLevel | "all")}
+              label="Risk level"
+            >
               <option value="all">All risk levels</option>
               {RISK_ORDER.map((l) => (
                 <option key={l} value={l} className="capitalize">

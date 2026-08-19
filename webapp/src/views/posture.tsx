@@ -12,7 +12,6 @@ import { ASSET_TYPE_LABEL, STATUS_LABEL, relativeTime, riskColorVar } from "@/li
 import type { GateId, GateState, OperatingStatus, PostureLevel } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
 
-
 const LEVEL_TONE: Record<PostureLevel, "normal" | "monitor" | "elevated" | "high" | "critical"> = {
   0: "normal",
   1: "monitor",
@@ -28,7 +27,13 @@ const NEXT_STATE: Record<GateState, GateState> = {
   not_required: "not_started",
 };
 
-const STATUS_OPTIONS: OperatingStatus[] = ["producing", "reduced", "standby", "shut_in", "evacuating"];
+const STATUS_OPTIONS: OperatingStatus[] = [
+  "producing",
+  "reduced",
+  "standby",
+  "shut_in",
+  "evacuating",
+];
 
 function GateCell({
   state,
@@ -104,7 +109,9 @@ export function PosturePage() {
     }),
     { current: 0, normal: 0 },
   );
-  const shutIn = postures.filter((p) => p.productionStatus === "shut_in" || p.productionStatus === "evacuating").length;
+  const shutIn = postures.filter(
+    (p) => p.productionStatus === "shut_in" || p.productionStatus === "evacuating",
+  ).length;
 
   async function cycleGate(assetId: string, gate: GateId, state: GateState) {
     await getServices(base).posture.setGate(assetId, gate, NEXT_STATE[state]);
@@ -237,7 +244,9 @@ export function PosturePage() {
                     <td className="px-3 py-2">
                       <select
                         value={p.productionStatus}
-                        onChange={(e) => void setStatus(p.assetId, e.target.value as OperatingStatus)}
+                        onChange={(e) =>
+                          void setStatus(p.assetId, e.target.value as OperatingStatus)
+                        }
                         className="rounded-sm border bg-card px-1.5 py-1 text-[11px]"
                       >
                         {STATUS_OPTIONS.map((s) => (
@@ -281,7 +290,9 @@ export function PosturePage() {
                 <div className="num text-xs font-semibold">
                   {g.id} · {g.label}
                 </div>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{g.description}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  {g.description}
+                </p>
               </li>
             ))}
           </ul>

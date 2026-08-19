@@ -150,6 +150,7 @@ their samples stay the source of truth.
 | `Microsoft.CognitiveServices` | Azure OpenAI (Foundry) agent (optional) |
 | `Microsoft.MachineLearningServices` | Aurora Foundry workspace + GPU endpoint (optional) |
 | `Microsoft.KeyVault` | Backing key vault for the Aurora Foundry workspace (optional) |
+| `Microsoft.Insights` | Application Insights dependency for the Aurora Foundry workspace (optional) |
 
 Register `Microsoft.Orbital` before deploying (the portal auto-registers the others during
 validation):

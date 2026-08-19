@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.46.1.21595",
-      "templateHash": "15676062778251105036"
+      "version": "0.44.1.10279",
+      "templateHash": "13838831413787364939"
     }
   },
   "parameters": {
@@ -169,6 +169,7 @@
     "amlWorkspaceName": "[format('pcpro-aml-{0}', variables('amlSuffix'))]",
     "amlStorageName": "[toLower(format('pcproaml{0}', take(uniqueString(resourceGroup().id), 12)))]",
     "amlKeyVaultName": "[format('pcpro-kv-{0}', variables('amlSuffix'))]",
+    "amlApplicationInsightsName": "[format('pcpro-ai-{0}', variables('amlSuffix'))]",
     "auroraEndpointName": "[format('aurora-{0}', variables('amlSuffix'))]",
     "auroraDeploymentName": "aurora",
     "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]"
@@ -396,6 +397,17 @@
         "accessPolicies": []
       }
     },
+    "amlApplicationInsights": {
+      "condition": "[parameters('deployAuroraModel')]",
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('amlApplicationInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web"
+      }
+    },
     "amlWorkspace": {
       "condition": "[parameters('deployAuroraModel')]",
       "type": "Microsoft.MachineLearningServices/workspaces",
@@ -407,10 +419,12 @@
       },
       "properties": {
         "friendlyName": "[variables('amlWorkspaceName')]",
+        "applicationInsights": "[resourceId('Microsoft.Insights/components', variables('amlApplicationInsightsName'))]",
         "storageAccount": "[resourceId('Microsoft.Storage/storageAccounts', variables('amlStorageName'))]",
         "keyVault": "[resourceId('Microsoft.KeyVault/vaults', variables('amlKeyVaultName'))]"
       },
       "dependsOn": [
+        "amlApplicationInsights",
         "amlKeyVault",
         "amlStorage"
       ]

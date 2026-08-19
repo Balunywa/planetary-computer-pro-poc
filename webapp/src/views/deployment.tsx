@@ -56,7 +56,9 @@ export function DeploymentPage() {
     },
     {
       name: "AI operations assistant (Azure OpenAI)",
-      detail: cfg.foundryDeployment ? `Deployment: ${cfg.foundryDeployment}` : "Grounded natural-language answers",
+      detail: cfg.foundryDeployment
+        ? `Deployment: ${cfg.foundryDeployment}`
+        : "Grounded natural-language answers",
       wired: foundryWired,
       endpoint: cfg.foundryEndpoint ? hostOf(cfg.foundryEndpoint) : undefined,
     },
@@ -78,7 +80,9 @@ export function DeploymentPage() {
           <div className="panel">
             <div className="flex items-center justify-between border-b px-4 py-2.5">
               <span className="label-xs">Connected Azure services</span>
-              {status.isLoading && <span className="text-[11px] text-muted-foreground">Checking…</span>}
+              {status.isLoading && (
+                <span className="text-[11px] text-muted-foreground">Checking…</span>
+              )}
             </div>
             <ul className="divide-y">
               {services.map((s) => (
@@ -87,7 +91,9 @@ export function DeploymentPage() {
                     <div className="text-xs font-medium">{s.name}</div>
                     <div className="text-[11px] text-muted-foreground">{s.detail}</div>
                     {s.endpoint && (
-                      <div className="num mt-0.5 truncate text-[10px] text-muted-foreground/80">{s.endpoint}</div>
+                      <div className="num mt-0.5 truncate text-[10px] text-muted-foreground/80">
+                        {s.endpoint}
+                      </div>
                     )}
                   </div>
                   <span
@@ -97,7 +103,9 @@ export function DeploymentPage() {
                         : "border-border text-muted-foreground"
                     }`}
                   >
-                    <span className={`size-1.5 rounded-full ${s.wired ? "bg-risk-normal" : "bg-muted-foreground/50"}`} />
+                    <span
+                      className={`size-1.5 rounded-full ${s.wired ? "bg-risk-normal" : "bg-muted-foreground/50"}`}
+                    />
                     {s.wired ? "Connected" : "Not configured"}
                   </span>
                 </li>
@@ -111,9 +119,9 @@ export function DeploymentPage() {
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               This deployment currently exposes{" "}
-              <span className="num font-medium text-foreground">{layers.data?.length ?? 0}</span> geospatial{" "}
-              {layers.data?.length === 1 ? "collection" : "collections"}. Assets are ingested from your GIS or
-              uploaded — nothing is pre-populated.
+              <span className="num font-medium text-foreground">{layers.data?.length ?? 0}</span>{" "}
+              geospatial {layers.data?.length === 1 ? "collection" : "collections"}. Assets are
+              ingested from your GIS or uploaded — nothing is pre-populated.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <OpsLink
@@ -136,9 +144,10 @@ export function DeploymentPage() {
               <Boxes className="size-3.5 text-primary" /> Service adapters
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Assets, weather, events, risk, geospatial, alerts and the assistant are served through stable
-              interfaces backed by the tenant's Azure resources. Each returns an honest empty result until the
-              corresponding data is ingested — the app never falls back to synthetic sample data.
+              Assets, weather, events, risk, geospatial, alerts and the assistant are served through
+              stable interfaces backed by the tenant's Azure resources. Each returns an honest empty
+              result until the corresponding data is ingested — the app never falls back to
+              synthetic sample data.
             </p>
           </div>
         </div>
@@ -173,9 +182,9 @@ export function DeploymentPage() {
           <div className="panel p-4">
             <div className="label-xs mb-2">Provisioning</div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Resources are created by the deployment template (Bicep/ARM) under your subscription, with the
-              app's managed identity granted the data-plane roles above. To change what is deployed, redeploy the
-              template — application code ships unchanged.
+              Resources are created by the deployment template (Bicep/ARM) under your subscription,
+              with the app's managed identity granted the data-plane roles above. To change what is
+              deployed, redeploy the template — application code ships unchanged.
             </p>
             <a
               href="https://learn.microsoft.com/azure/planetary-computer/"
@@ -191,4 +200,3 @@ export function DeploymentPage() {
     </AppShell>
   );
 }
-

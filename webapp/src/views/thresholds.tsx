@@ -16,7 +16,6 @@ import type {
   ThresholdRule,
 } from "@/lib/domain/types";
 
-
 const SEVERITY_TONE: Record<AlertSeverity, "critical" | "high" | "monitor" | "normal"> = {
   critical: "critical",
   warning: "high",
@@ -144,9 +143,9 @@ export function ThresholdsPage() {
                       )}
                     </div>
                     <div className="num mt-1 text-[11px] text-muted-foreground">
-                      {METRIC_LABEL[rule.metric]} {rule.comparator === "gte" ? "≥" : "≤"} {rule.value}{" "}
-                      {METRIC_UNIT[rule.metric]} · exposure ≥ {rule.appliesAboveScore} ·{" "}
-                      {rule.assetTypes.map((t) => ASSET_TYPE_LABEL[t]).join(", ")}
+                      {METRIC_LABEL[rule.metric]} {rule.comparator === "gte" ? "≥" : "≤"}{" "}
+                      {rule.value} {METRIC_UNIT[rule.metric]} · exposure ≥ {rule.appliesAboveScore}{" "}
+                      · {rule.assetTypes.map((t) => ASSET_TYPE_LABEL[t]).join(", ")}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">{rule.action}</div>
                   </div>
@@ -187,7 +186,9 @@ export function ThresholdsPage() {
         <div className="space-y-4">
           {editing && (
             <div className="panel p-4">
-              <div className="label-xs mb-3">{editing.builtIn ? "Edit threshold" : "Threshold definition"}</div>
+              <div className="label-xs mb-3">
+                {editing.builtIn ? "Edit threshold" : "Threshold definition"}
+              </div>
               <div className="space-y-3 text-xs">
                 <label className="block">
                   <span className="label-xs">Name</span>
@@ -202,7 +203,9 @@ export function ThresholdsPage() {
                     <span className="label-xs">Metric</span>
                     <select
                       value={editing.metric}
-                      onChange={(e) => setEditing({ ...editing, metric: e.target.value as ThresholdMetric })}
+                      onChange={(e) =>
+                        setEditing({ ...editing, metric: e.target.value as ThresholdMetric })
+                      }
                       className="mt-1 w-full rounded-sm border bg-card px-2 py-1.5 text-xs"
                     >
                       {METRICS.map((m) => (
@@ -217,7 +220,10 @@ export function ThresholdsPage() {
                     <select
                       value={editing.comparator}
                       onChange={(e) =>
-                        setEditing({ ...editing, comparator: e.target.value as ThresholdComparator })
+                        setEditing({
+                          ...editing,
+                          comparator: e.target.value as ThresholdComparator,
+                        })
                       }
                       className="mt-1 w-full rounded-sm border bg-card px-2 py-1.5 text-xs"
                     >
@@ -252,7 +258,9 @@ export function ThresholdsPage() {
                             })
                           }
                           className={`rounded-sm border px-2 py-1 text-[11px] ${
-                            on ? "border-primary/50 bg-primary/10 text-primary" : "text-muted-foreground"
+                            on
+                              ? "border-primary/50 bg-primary/10 text-primary"
+                              : "text-muted-foreground"
                           }`}
                         >
                           {ASSET_TYPE_LABEL[t]}
@@ -267,7 +275,9 @@ export function ThresholdsPage() {
                     <input
                       type="number"
                       value={editing.appliesAboveScore}
-                      onChange={(e) => setEditing({ ...editing, appliesAboveScore: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setEditing({ ...editing, appliesAboveScore: Number(e.target.value) })
+                      }
                       className="num mt-1 w-full rounded-sm border bg-card px-2 py-1.5 text-xs"
                     />
                   </label>
@@ -275,7 +285,9 @@ export function ThresholdsPage() {
                     <span className="label-xs">Severity</span>
                     <select
                       value={editing.severity}
-                      onChange={(e) => setEditing({ ...editing, severity: e.target.value as AlertSeverity })}
+                      onChange={(e) =>
+                        setEditing({ ...editing, severity: e.target.value as AlertSeverity })
+                      }
                       className="mt-1 w-full rounded-sm border bg-card px-2 py-1.5 text-xs"
                     >
                       <option value="critical">Critical</option>
@@ -334,7 +346,8 @@ export function ThresholdsPage() {
                       <div className="text-xs font-medium">{nameOf(b.assetId)}</div>
                       <div className="num mt-0.5 text-[11px] text-muted-foreground">
                         {b.ruleName} · {METRIC_LABEL[b.metric]} {b.observed}
-                        {METRIC_UNIT[b.metric]} vs {b.comparator === "gte" ? "≥" : "≤"} {b.threshold}
+                        {METRIC_UNIT[b.metric]} vs {b.comparator === "gte" ? "≥" : "≤"}{" "}
+                        {b.threshold}
                         {METRIC_UNIT[b.metric]}
                         {b.hoursToImpact !== null && ` · onset ${b.hoursToImpact}h`}
                       </div>

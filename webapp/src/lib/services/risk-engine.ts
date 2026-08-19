@@ -9,7 +9,8 @@ export function haversineMi(aLat: number, aLon: number, bLat: number, bLon: numb
   const dLat = toRad(bLat - aLat);
   const dLon = toRad(bLon - aLon);
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_MI * Math.asin(Math.sqrt(h));
 }
 
@@ -86,12 +87,21 @@ export function levelFromScore(score: number): RiskLevel {
 }
 
 const TYPE_SENSITIVITY: Record<Asset["type"], { points: number; note: string }> = {
-  offshore_platform: { points: 8, note: "Offshore facility — crew evacuation and shut-in lead time required" },
-  pipeline: { points: 5, note: "Subsea/onshore pipeline — scour, rainfall and right-of-way exposure" },
+  offshore_platform: {
+    points: 8,
+    note: "Offshore facility — crew evacuation and shut-in lead time required",
+  },
+  pipeline: {
+    points: 5,
+    note: "Subsea/onshore pipeline — scour, rainfall and right-of-way exposure",
+  },
   lng_terminal: { points: 6, note: "LNG terminal — marine loading and storm surge sensitivity" },
   refinery: { points: 6, note: "Refinery — flooding and safe-shutdown lead time" },
   storage: { points: 4, note: "Storage facility — surge and access exposure" },
-  port: { points: 5, note: "Port/logistics base — staging capacity is critical during evacuations" },
+  port: {
+    points: 5,
+    note: "Port/logistics base — staging capacity is critical during evacuations",
+  },
   well: { points: 2, note: "Wellhead — limited manned exposure" },
 };
 
@@ -132,7 +142,10 @@ export function scoreAsset(asset: Asset, event: WeatherEvent, horizonHours = 120
   const etaPoints = eta === null ? 0 : Math.round(Math.max(0, 10 - eta / 12));
   factors.push({
     label: "Time to impact",
-    detail: eta === null ? "No impact within the forecast horizon" : `Closest approach in ${Math.round(eta)} hours`,
+    detail:
+      eta === null
+        ? "No impact within the forecast horizon"
+        : `Closest approach in ${Math.round(eta)} hours`,
     points: etaPoints,
   });
 
@@ -185,17 +198,30 @@ function recommend(
   const out: string[] = [];
   const etaText = eta === null ? "the forecast horizon" : `${Math.round(eta)} hours`;
   if (asset.type === "offshore_platform") {
-    if (wind >= 90) out.push(`Initiate non-essential personnel down-manning; full evacuation decision within ${etaText}.`);
-    else if (wind >= 60) out.push("Begin pre-storm secure checklist and suspend crane and helideck operations.");
+    if (wind >= 90)
+      out.push(
+        `Initiate non-essential personnel down-manning; full evacuation decision within ${etaText}.`,
+      );
+    else if (wind >= 60)
+      out.push("Begin pre-storm secure checklist and suspend crane and helideck operations.");
     else out.push("Maintain normal operations; confirm weather-window reporting cadence.");
-    if (wind >= 74) out.push("Prepare production shut-in sequence and confirm subsea isolation readiness.");
+    if (wind >= 74)
+      out.push("Prepare production shut-in sequence and confirm subsea isolation readiness.");
   }
   if (asset.type === "pipeline") {
-    out.push(rain >= 5 ? "Review right-of-way access and scour-prone crossings ahead of rainfall." : "Confirm pigging and inspection schedule against forecast window.");
+    out.push(
+      rain >= 5
+        ? "Review right-of-way access and scour-prone crossings ahead of rainfall."
+        : "Confirm pigging and inspection schedule against forecast window.",
+    );
     if (wind >= 74) out.push("Coordinate throughput reduction with upstream shut-in plan.");
   }
   if (asset.type === "refinery" || asset.type === "storage") {
-    out.push(rain >= 6 ? "Activate flood-preparedness plan and verify drainage and berm readiness." : "Verify safe-shutdown lead time against forecast onset.");
+    out.push(
+      rain >= 6
+        ? "Activate flood-preparedness plan and verify drainage and berm readiness."
+        : "Verify safe-shutdown lead time against forecast onset.",
+    );
   }
   if (asset.type === "lng_terminal") {
     out.push("Review marine loading schedule and confirm vessel departure cut-off times.");
@@ -204,8 +230,15 @@ function recommend(
     out.push("Confirm evacuation staging capacity and vessel berth allocation priority.");
   }
   if (asset.type === "well") {
-    out.push(wind >= 74 ? "Confirm remote shut-in capability and subsea valve status." : "No action required; continue monitoring.");
+    out.push(
+      wind >= 74
+        ? "Confirm remote shut-in capability and subsea valve status."
+        : "No action required; continue monitoring.",
+    );
   }
-  if (insideCone) out.push("Include in the twice-daily incident management team review while inside the impact corridor.");
+  if (insideCone)
+    out.push(
+      "Include in the twice-daily incident management team review while inside the impact corridor.",
+    );
   return out;
 }

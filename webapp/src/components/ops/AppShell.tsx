@@ -101,7 +101,8 @@ export function AppShell({
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {NAV.map((item) => {
             const target = href(item.to);
-            const active = item.to === "/" ? path === target || path === `${target}/` : path.startsWith(target);
+            const active =
+              item.to === "/" ? path === target || path === `${target}/` : path.startsWith(target);
             return (
               <OpsLink
                 key={item.to}
@@ -181,7 +182,9 @@ export function AppShell({
             )}
           </div>
         </header>
-        <main className={cn("min-w-0 flex-1", fullHeight && "xl:min-h-0 xl:overflow-hidden")}>{children}</main>
+        <main className={cn("min-w-0 flex-1", fullHeight && "xl:min-h-0 xl:overflow-hidden")}>
+          {children}
+        </main>
       </div>
     </div>
   );

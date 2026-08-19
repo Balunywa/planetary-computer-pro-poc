@@ -3,12 +3,16 @@ import { useMemo, useState } from "react";
 
 import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
-import { alertsQuery, assetsQuery, thresholdRulesQuery, useOpsSnapshot } from "@/lib/hooks/use-ops-data";
+import {
+  alertsQuery,
+  assetsQuery,
+  thresholdRulesQuery,
+  useOpsSnapshot,
+} from "@/lib/hooks/use-ops-data";
 import { METRIC_LABEL, METRIC_UNIT, evaluateRules } from "@/lib/services/thresholds";
 import { getServices } from "@/lib/services";
 import { relativeTime, riskColorVar, utcStamp } from "@/lib/format";
 import type { AlertSeverity, OpsAlert } from "@/lib/domain/types";
-
 
 const SEVERITY_TONE: Record<AlertSeverity, "critical" | "high" | "monitor" | "normal"> = {
   critical: "critical",
@@ -141,12 +145,14 @@ export function AlertsPage() {
                     <div className="text-xs font-medium">{a.title}</div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground">{a.detail}</div>
                     <div className="num mt-1 text-[10px] text-muted-foreground">
-                      {a.id} · {asset ? asset.name : "Estate-wide"} · owner {a.owner} · {utcStamp(a.createdAtIso)} (
-                      {relativeTime(a.createdAtIso)})
+                      {a.id} · {asset ? asset.name : "Estate-wide"} · owner {a.owner} ·{" "}
+                      {utcStamp(a.createdAtIso)} ({relativeTime(a.createdAtIso)})
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-sm border px-2 py-1 text-[10px] tracking-wider uppercase">{a.status}</span>
+                    <span className="rounded-sm border px-2 py-1 text-[10px] tracking-wider uppercase">
+                      {a.status}
+                    </span>
                     {a.status === "open" && (
                       <button
                         onClick={() => setAlertStatus(a.id, "acknowledged")}
@@ -169,8 +175,8 @@ export function AlertsPage() {
             })}
             {rows.length === 0 && (
               <li className="px-4 py-10 text-center text-xs text-muted-foreground">
-                No alerts. Threshold breaches for the current forecast cycle appear here as assets and rules are
-                configured.
+                No alerts. Threshold breaches for the current forecast cycle appear here as assets
+                and rules are configured.
               </li>
             )}
           </ul>

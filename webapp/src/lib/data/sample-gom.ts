@@ -32,7 +32,10 @@ function well(
     businessUnit: "Upstream",
     status: "producing",
     criticality: "standard",
-    metadata: { water_depth_ft: 400 + ((Number(id.slice(-3)) * 137) % 4000), completion: "subsea tieback" },
+    metadata: {
+      water_depth_ft: 400 + ((Number(id.slice(-3)) * 137) % 4000),
+      completion: "subsea tieback",
+    },
   };
 }
 
@@ -337,13 +340,69 @@ export const sampleEvent: WeatherEvent = {
   ],
   forecast: [
     { hour: 0, lat: 24.4, lon: -86.2, windMph: 121, coneRadiusMi: 0, category: 3, pressureMb: 954 },
-    { hour: 12, lat: 25.3, lon: -87.3, windMph: 127, coneRadiusMi: 42, category: 3, pressureMb: 949 },
-    { hour: 24, lat: 26.2, lon: -88.4, windMph: 133, coneRadiusMi: 74, category: 4, pressureMb: 941 },
-    { hour: 36, lat: 27.0, lon: -89.5, windMph: 138, coneRadiusMi: 104, category: 4, pressureMb: 936 },
-    { hour: 48, lat: 27.9, lon: -90.4, windMph: 131, coneRadiusMi: 138, category: 4, pressureMb: 942 },
-    { hour: 72, lat: 29.3, lon: -91.4, windMph: 112, coneRadiusMi: 196, category: 2, pressureMb: 958 },
-    { hour: 96, lat: 30.6, lon: -92.1, windMph: 68, coneRadiusMi: 244, category: 0, pressureMb: 985 },
-    { hour: 120, lat: 31.8, lon: -92.5, windMph: 40, coneRadiusMi: 288, category: 0, pressureMb: 999 },
+    {
+      hour: 12,
+      lat: 25.3,
+      lon: -87.3,
+      windMph: 127,
+      coneRadiusMi: 42,
+      category: 3,
+      pressureMb: 949,
+    },
+    {
+      hour: 24,
+      lat: 26.2,
+      lon: -88.4,
+      windMph: 133,
+      coneRadiusMi: 74,
+      category: 4,
+      pressureMb: 941,
+    },
+    {
+      hour: 36,
+      lat: 27.0,
+      lon: -89.5,
+      windMph: 138,
+      coneRadiusMi: 104,
+      category: 4,
+      pressureMb: 936,
+    },
+    {
+      hour: 48,
+      lat: 27.9,
+      lon: -90.4,
+      windMph: 131,
+      coneRadiusMi: 138,
+      category: 4,
+      pressureMb: 942,
+    },
+    {
+      hour: 72,
+      lat: 29.3,
+      lon: -91.4,
+      windMph: 112,
+      coneRadiusMi: 196,
+      category: 2,
+      pressureMb: 958,
+    },
+    {
+      hour: 96,
+      lat: 30.6,
+      lon: -92.1,
+      windMph: 68,
+      coneRadiusMi: 244,
+      category: 0,
+      pressureMb: 985,
+    },
+    {
+      hour: 120,
+      lat: 31.8,
+      lon: -92.5,
+      windMph: 40,
+      coneRadiusMi: 288,
+      category: 0,
+      pressureMb: 999,
+    },
   ],
 };
 
@@ -364,7 +423,8 @@ export const sampleAlerts: OpsAlert[] = [
   {
     id: "ALR-1040",
     title: "Pipeline Segment GOM-12 forecast for severe rainfall within 18 hours",
-    detail: "Forecast rainfall of 8.4 in over the shore approach may affect right-of-way access and pigging schedule.",
+    detail:
+      "Forecast rainfall of 8.4 in over the shore approach may affect right-of-way access and pigging schedule.",
     severity: "warning",
     assetId: "PIP-GOM12",
     eventId: "AL072026",
@@ -375,7 +435,8 @@ export const sampleAlerts: OpsAlert[] = [
   {
     id: "ALR-1039",
     title: "Wind forecast for Facility Bravo-2 exceeded configured threshold",
-    detail: "Configured threshold 74 mph; forecast peak 88 mph at hour 41. Crane operations suspension recommended.",
+    detail:
+      "Configured threshold 74 mph; forecast peak 88 mph at hour 41. Crane operations suspension recommended.",
     severity: "warning",
     assetId: "PLT-B2",
     eventId: "AL072026",
@@ -396,7 +457,8 @@ export const sampleAlerts: OpsAlert[] = [
   {
     id: "ALR-1037",
     title: "Port Fourchon Base staging capacity constrained",
-    detail: "Evacuation demand modelling indicates berth saturation if more than four facilities de-man simultaneously.",
+    detail:
+      "Evacuation demand modelling indicates berth saturation if more than four facilities de-man simultaneously.",
     severity: "advisory",
     assetId: "POR-FOU",
     status: "open",
@@ -446,7 +508,10 @@ sampleEvent.ensemble = Array.from({ length: 14 }, (_, m) => {
       const lat = p.lat + bias * spread * 2.4 * 0.62 + Math.sin(bias * 3.1) * spread * 0.5;
       const lon = p.lon - bias * spread * 3.6 + Math.cos(bias * 2.2) * spread * 0.45;
       const drift = (speedBias - 1) * spread * 2.1;
-      return [Number((lon + drift).toFixed(3)), Number((lat + drift * 0.4).toFixed(3))] as [number, number];
+      return [Number((lon + drift).toFixed(3)), Number((lat + drift * 0.4).toFixed(3))] as [
+        number,
+        number,
+      ];
     }),
   };
 });

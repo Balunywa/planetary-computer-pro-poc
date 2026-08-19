@@ -82,7 +82,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "Weather & Asset Risk Operations" },
       {
         property: "og:description",
-        content: "Hurricane and asset exposure intelligence for offshore and downstream energy operations.",
+        content:
+          "Hurricane and asset exposure intelligence for offshore and downstream energy operations.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

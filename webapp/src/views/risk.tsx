@@ -11,7 +11,6 @@ import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { ASSET_TYPE_LABEL, RISK_ORDER } from "@/lib/format";
 import type { RiskLevel } from "@/lib/domain/types";
 
-
 type SortKey = "score" | "eta" | "name" | "wind";
 
 export function RiskPage() {
@@ -28,7 +27,11 @@ export function RiskPage() {
       .filter((x) => x.asset)
       .filter((x) => (level === "all" ? true : x.risk.level === level))
       .filter((x) =>
-        q ? `${x.asset.name} ${x.asset.id} ${x.asset.region} ${x.asset.operator}`.toLowerCase().includes(q.toLowerCase()) : true,
+        q
+          ? `${x.asset.name} ${x.asset.id} ${x.asset.region} ${x.asset.operator}`
+              .toLowerCase()
+              .includes(q.toLowerCase())
+          : true,
       );
     list.sort((a, b) => {
       if (sort === "score") return b.risk.score - a.risk.score;
@@ -40,7 +43,10 @@ export function RiskPage() {
   }, [risks, assets, level, q, sort]);
 
   const selectedAsset = assets.find((a) => a.id === selected) ?? null;
-  const counts = RISK_ORDER.map((l) => ({ level: l, n: risks.filter((r) => r.level === l).length }));
+  const counts = RISK_ORDER.map((l) => ({
+    level: l,
+    n: risks.filter((r) => r.level === l).length,
+  }));
 
   return (
     <AppShell>
@@ -84,7 +90,9 @@ export function RiskPage() {
                 <option value="wind">Sort: forecast wind</option>
                 <option value="name">Sort: asset name</option>
               </select>
-              <span className="ml-auto text-[11px] text-muted-foreground">{rows.length} assets</span>
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                {rows.length} assets
+              </span>
             </div>
             <div className="max-h-[640px] overflow-y-auto">
               <table className="w-full text-xs">
@@ -111,7 +119,9 @@ export function RiskPage() {
                       className={`cursor-pointer border-t hover:bg-accent/50 ${selected === asset.id ? "bg-accent/60" : ""}`}
                     >
                       <td className="px-4 py-2 font-medium">{asset.name}</td>
-                      <td className="px-4 py-2 text-muted-foreground">{ASSET_TYPE_LABEL[asset.type]}</td>
+                      <td className="px-4 py-2 text-muted-foreground">
+                        {ASSET_TYPE_LABEL[asset.type]}
+                      </td>
                       <td className="px-4 py-2 text-muted-foreground">{asset.region}</td>
                       <td className="px-4 py-2">
                         <RiskBadge level={risk.level} score={risk.score} />

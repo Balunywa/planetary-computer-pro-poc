@@ -132,6 +132,7 @@ var amlSuffix = take(uniqueString(resourceGroup().id), 8)
 var amlWorkspaceName = 'pcpro-aml-${amlSuffix}'
 var amlStorageName = toLower('pcproaml${take(uniqueString(resourceGroup().id), 12)}')
 var amlKeyVaultName = 'pcpro-kv-${amlSuffix}'
+var amlApplicationInsightsName = 'pcpro-ai-${amlSuffix}'
 var auroraEndpointName = 'aurora-${amlSuffix}'
 var auroraDeploymentName = 'aurora'
 // The GPU model deployment only runs when a model asset ID is supplied (it needs GPU
@@ -332,6 +333,15 @@ resource amlKeyVault 'Microsoft.KeyVault/vaults@2023-07-01' = if (deployAuroraMo
   }
 }
 
+resource amlApplicationInsights 'Microsoft.Insights/components@2020-02-02' = if (deployAuroraModel) {
+  name: amlApplicationInsightsName
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+  }
+}
+
 resource amlWorkspace 'Microsoft.MachineLearningServices/workspaces@2023-10-01' = if (deployAuroraModel) {
   name: amlWorkspaceName
   location: location
@@ -340,6 +350,7 @@ resource amlWorkspace 'Microsoft.MachineLearningServices/workspaces@2023-10-01' 
   }
   properties: {
     friendlyName: amlWorkspaceName
+    applicationInsights: amlApplicationInsights.id
     storageAccount: amlStorage.id
     keyVault: amlKeyVault.id
   }

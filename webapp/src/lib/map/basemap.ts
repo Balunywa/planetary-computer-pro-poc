@@ -110,4 +110,3 @@ export function basemapStyle(id: BasemapId): StyleSpecification | string {
 }
 
 export const basemapProviderLabel = AZURE_KEY ? "Azure Maps" : "OpenFreeMap / OpenStreetMap";
-

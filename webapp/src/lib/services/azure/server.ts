@@ -124,7 +124,11 @@ export const askFoundryCopilot = createServerFn({ method: "POST" })
         }),
       });
       if (!res.ok) {
-        return { text: `The assistant request failed (${res.status}).`, citations: [], highlightAssetIds: [] };
+        return {
+          text: `The assistant request failed (${res.status}).`,
+          citations: [],
+          highlightAssetIds: [],
+        };
       }
       const body = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
@@ -132,7 +136,11 @@ export const askFoundryCopilot = createServerFn({ method: "POST" })
       const text = body.choices?.[0]?.message?.content?.trim();
       return { text: text || "No answer was returned.", citations: [], highlightAssetIds: [] };
     } catch {
-      return { text: "The assistant is currently unavailable.", citations: [], highlightAssetIds: [] };
+      return {
+        text: "The assistant is currently unavailable.",
+        citations: [],
+        highlightAssetIds: [],
+      };
     }
   });
 
@@ -171,14 +179,21 @@ export const uploadAsset = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<UploadResult> => {
     const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
     if (!containerUrl) {
-      return { ok: false, message: "Storage is not configured for this deployment (SAMPLE_CONTAINER_URL is unset)." };
+      return {
+        ok: false,
+        message: "Storage is not configured for this deployment (SAMPLE_CONTAINER_URL is unset).",
+      };
     }
     const token = await getManagedIdentityToken(STORAGE_RESOURCE);
     if (!token) {
-      return { ok: false, message: "Could not acquire a managed-identity token for storage. Confirm the App Service identity has Storage Blob Data Contributor." };
+      return {
+        ok: false,
+        message:
+          "Could not acquire a managed-identity token for storage. Confirm the App Service identity has Storage Blob Data Contributor.",
+      };
     }
     // Flatten to a safe blob name — no paths, no odd characters.
-    const safeName = (data.name.split(/[\\/]/).pop() || "upload.bin").replace(/[^\w.\-]/g, "_");
+    const safeName = (data.name.split(/[\\/]/).pop() || "upload.bin").replace(/[^\w.-]/g, "_");
     const bytes = Buffer.from(data.contentBase64, "base64");
     if (bytes.length === 0) return { ok: false, message: "The file is empty." };
     const blobUrl = `${containerUrl.replace(/\/$/, "")}/${encodeURIComponent(safeName)}`;
@@ -215,11 +230,18 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
   async (): Promise<SeedResult> => {
     const geoCatalogUrl = process.env["GEOCATALOG_URI"];
     if (!geoCatalogUrl) {
-      return { ok: false, message: "GeoCatalog is not configured for this deployment (GEOCATALOG_URI is unset)." };
+      return {
+        ok: false,
+        message: "GeoCatalog is not configured for this deployment (GEOCATALOG_URI is unset).",
+      };
     }
     const token = await getManagedIdentityToken(GEOCATALOG_RESOURCE);
     if (!token) {
-      return { ok: false, message: "Could not acquire a managed-identity token for the GeoCatalog. Confirm the App Service identity has GeoCatalog Administrator." };
+      return {
+        ok: false,
+        message:
+          "Could not acquire a managed-identity token for the GeoCatalog. Confirm the App Service identity has GeoCatalog Administrator.",
+      };
     }
     const base = geoCatalogUrl.replace(/\/$/, "");
     const collectionId = "sample-sentinel-2-gom";
@@ -239,12 +261,18 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
         }),
       });
       if (!searchRes.ok) {
-        return { ok: false, message: `Could not query the public Planetary Computer (${searchRes.status}).` };
+        return {
+          ok: false,
+          message: `Could not query the public Planetary Computer (${searchRes.status}).`,
+        };
       }
       const fc = (await searchRes.json()) as { features?: Array<Record<string, unknown>> };
       items = fc.features ?? [];
     } catch {
-      return { ok: false, message: "Could not reach the public Planetary Computer to fetch sample imagery." };
+      return {
+        ok: false,
+        message: "Could not reach the public Planetary Computer to fetch sample imagery.",
+      };
     }
     if (items.length === 0) {
       return { ok: false, message: "No public sample scenes were returned for the sample area." };
@@ -273,10 +301,16 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
       });
       if (!cRes.ok && cRes.status !== 409) {
         const detail = await cRes.text();
-        return { ok: false, message: `Could not create the sample collection (${cRes.status}). ${detail.slice(0, 200)}` };
+        return {
+          ok: false,
+          message: `Could not create the sample collection (${cRes.status}). ${detail.slice(0, 200)}`,
+        };
       }
     } catch {
-      return { ok: false, message: "Could not reach the GeoCatalog to create the sample collection." };
+      return {
+        ok: false,
+        message: "Could not reach the GeoCatalog to create the sample collection.",
+      };
     }
 
     // 3. Ingest the items, re-homing them onto the new collection.
@@ -296,7 +330,10 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
       }
     }
     if (ingested === 0) {
-      return { ok: false, message: "The sample collection was created but no items could be ingested." };
+      return {
+        ok: false,
+        message: "The sample collection was created but no items could be ingested.",
+      };
     }
     return {
       ok: true,
@@ -304,7 +341,8 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
       collectionId,
       ingested,
     };
-  });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Threshold-rule persistence.
@@ -352,11 +390,19 @@ export const saveThresholdRules = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SaveRulesResult> => {
     const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
     if (!containerUrl) {
-      return { ok: true, persisted: false, message: "Storage not configured; rules kept in memory for this session." };
+      return {
+        ok: true,
+        persisted: false,
+        message: "Storage not configured; rules kept in memory for this session.",
+      };
     }
     const token = await getManagedIdentityToken(STORAGE_RESOURCE);
     if (!token) {
-      return { ok: false, persisted: false, message: "Could not acquire a managed-identity token for storage." };
+      return {
+        ok: false,
+        persisted: false,
+        message: "Could not acquire a managed-identity token for storage.",
+      };
     }
     const body = Buffer.from(JSON.stringify(data.rules), "utf8");
     try {
@@ -371,10 +417,18 @@ export const saveThresholdRules = createServerFn({ method: "POST" })
         body,
       });
       if (!res.ok) {
-        return { ok: false, persisted: false, message: `Could not save thresholds (${res.status}).` };
+        return {
+          ok: false,
+          persisted: false,
+          message: `Could not save thresholds (${res.status}).`,
+        };
       }
       return { ok: true, persisted: true, message: "Thresholds saved." };
     } catch {
-      return { ok: false, persisted: false, message: "Could not reach storage to save thresholds." };
+      return {
+        ok: false,
+        persisted: false,
+        message: "Could not reach storage to save thresholds.",
+      };
     }
   });

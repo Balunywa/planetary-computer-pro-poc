@@ -24,13 +24,15 @@ export const POSTURE_GATES: PostureGate[] = [
     id: "T-96",
     leadHours: 96,
     label: "Secure & logistics plan",
-    description: "Loose equipment secured, marine and aviation capacity reserved, supply runs re-sequenced.",
+    description:
+      "Loose equipment secured, marine and aviation capacity reserved, supply runs re-sequenced.",
   },
   {
     id: "T-72",
     leadHours: 72,
     label: "Non-essential down-man",
-    description: "Non-essential personnel flown to shore; drilling and construction activity suspended.",
+    description:
+      "Non-essential personnel flown to shore; drilling and construction activity suspended.",
   },
   {
     id: "T-48",
@@ -131,7 +133,9 @@ export function derivePosture(asset: Asset, risk: AssetRisk | undefined): AssetP
     gates[g.id] = gateFromEta(eta, g.leadHours);
   }
 
-  const next = POSTURE_GATES.find((g) => gates[g.id] === "not_started" || gates[g.id] === "in_progress");
+  const next = POSTURE_GATES.find(
+    (g) => gates[g.id] === "not_started" || gates[g.id] === "in_progress",
+  );
   const normalPob = manned ? (NORMAL_POB[asset.type] ?? 90) : null;
   const reduction = level >= 4 ? 0 : level === 3 ? 0.32 : level === 2 ? 0.68 : 1;
   const pob = normalPob === null ? null : Math.round(normalPob * reduction);
@@ -139,7 +143,8 @@ export function derivePosture(asset: Asset, risk: AssetRisk | undefined): AssetP
   const decision =
     level >= 3
       ? {
-          action: level >= 4 ? "Full evacuation authorised" : "Non-essential down-manning authorised",
+          action:
+            level >= 4 ? "Full evacuation authorised" : "Non-essential down-manning authorised",
           by: OWNER[asset.type] ?? "Operations Duty Manager",
           atIso: new Date(Date.now() - (level >= 4 ? 42 : 96) * 60 * 1000).toISOString(),
         }

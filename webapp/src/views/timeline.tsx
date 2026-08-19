@@ -11,7 +11,6 @@ import { useQuery } from "@tanstack/react-query";
 import { scoreAsset } from "@/lib/services/risk-engine";
 import { riskColorVar } from "@/lib/format";
 
-
 const STOPS = [24, 48, 72, 120];
 
 export function TimelinePage() {
@@ -50,7 +49,8 @@ export function TimelinePage() {
       return {
         hour: h,
         exposed: scored.filter((r) => r.score >= 42 && (r.hoursToImpact ?? 999) <= h).length,
-        critical: scored.filter((r) => r.level === "critical" && (r.hoursToImpact ?? 999) <= h).length,
+        critical: scored.filter((r) => r.level === "critical" && (r.hoursToImpact ?? 999) <= h)
+          .length,
       };
     });
   }, [assets, event]);
@@ -154,7 +154,9 @@ export function TimelinePage() {
                       opacity: s.hour <= hour ? 1 : 0.28,
                     }}
                   />
-                  <span className="num text-[9px] text-muted-foreground">{s.hour % 24 === 0 ? s.hour : ""}</span>
+                  <span className="num text-[9px] text-muted-foreground">
+                    {s.hour % 24 === 0 ? s.hour : ""}
+                  </span>
                 </button>
               ))}
             </div>
@@ -165,7 +167,9 @@ export function TimelinePage() {
           <div className="border-b px-4 py-2.5 label-xs">Exposed at +{hour} h</div>
           <ul className="divide-y">
             {topNow.length === 0 && (
-              <li className="px-4 py-4 text-xs text-muted-foreground">No assets reach impact onset before this hour.</li>
+              <li className="px-4 py-4 text-xs text-muted-foreground">
+                No assets reach impact onset before this hour.
+              </li>
             )}
             {topNow.map((r) => (
               <li key={r.assetId} className="flex items-center justify-between gap-2 px-4 py-2.5">

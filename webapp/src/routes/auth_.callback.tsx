@@ -34,7 +34,8 @@ function CallbackPage() {
       if (data.session) finish(data.session);
       else
         setTimeout(() => {
-          if (!cancelled) setMessage("Sign-in did not complete. Return to the sign-in page and try again.");
+          if (!cancelled)
+            setMessage("Sign-in did not complete. Return to the sign-in page and try again.");
         }, 6000);
     });
 

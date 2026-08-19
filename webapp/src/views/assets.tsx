@@ -1,6 +1,16 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
-import { CheckCircle2, Database, FileSpreadsheet, Globe, Layers, Loader2, Plug, Server, Upload } from "lucide-react";
+import {
+  CheckCircle2,
+  Database,
+  FileSpreadsheet,
+  Globe,
+  Layers,
+  Loader2,
+  Plug,
+  Server,
+  Upload,
+} from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { useOpsBase } from "@/components/ops/ops-nav";
@@ -21,15 +31,56 @@ function readAsBase64(file: File): Promise<string> {
   });
 }
 
-
 const CONNECTORS = [
-  { id: "csv", name: "CSV upload", detail: "Point-asset registers with latitude and longitude columns", icon: FileSpreadsheet, status: "Available" },
-  { id: "geojson", name: "GeoJSON", detail: "Point, line and polygon geometry for corridors and lease blocks", icon: Globe, status: "Available" },
-  { id: "shapefile", name: "Shapefile", detail: "Zipped ESRI shapefiles from survey and GIS teams", icon: Layers, status: "Available" },
-  { id: "arcgis", name: "ArcGIS feature service", detail: "Live feature layers from the corporate GIS", icon: Globe, status: "Configure" },
-  { id: "blob", name: "Cloud storage container", detail: "Scheduled ingest from your governed data landing zone", icon: Database, status: "Configure" },
-  { id: "fabric", name: "Enterprise data platform", detail: "Governed asset master from your analytics platform", icon: Server, status: "Configure" },
-  { id: "rest", name: "REST API", detail: "Pull from maintenance, SCADA or asset-management systems", icon: Plug, status: "Configure" },
+  {
+    id: "csv",
+    name: "CSV upload",
+    detail: "Point-asset registers with latitude and longitude columns",
+    icon: FileSpreadsheet,
+    status: "Available",
+  },
+  {
+    id: "geojson",
+    name: "GeoJSON",
+    detail: "Point, line and polygon geometry for corridors and lease blocks",
+    icon: Globe,
+    status: "Available",
+  },
+  {
+    id: "shapefile",
+    name: "Shapefile",
+    detail: "Zipped ESRI shapefiles from survey and GIS teams",
+    icon: Layers,
+    status: "Available",
+  },
+  {
+    id: "arcgis",
+    name: "ArcGIS feature service",
+    detail: "Live feature layers from the corporate GIS",
+    icon: Globe,
+    status: "Configure",
+  },
+  {
+    id: "blob",
+    name: "Cloud storage container",
+    detail: "Scheduled ingest from your governed data landing zone",
+    icon: Database,
+    status: "Configure",
+  },
+  {
+    id: "fabric",
+    name: "Enterprise data platform",
+    detail: "Governed asset master from your analytics platform",
+    icon: Server,
+    status: "Configure",
+  },
+  {
+    id: "rest",
+    name: "REST API",
+    detail: "Pull from maintenance, SCADA or asset-management systems",
+    icon: Plug,
+    status: "Configure",
+  },
 ];
 
 const SCHEMA = [
@@ -72,7 +123,12 @@ export function AssetsPage() {
   });
 
   const rows = useMemo(
-    () => assets.filter((a) => `${a.name} ${a.id} ${a.operator} ${a.region}`.toLowerCase().includes(q.toLowerCase())).slice(0, 100),
+    () =>
+      assets
+        .filter((a) =>
+          `${a.name} ${a.id} ${a.operator} ${a.region}`.toLowerCase().includes(q.toLowerCase()),
+        )
+        .slice(0, 100),
     [assets, q],
   );
 
@@ -121,7 +177,11 @@ export function AssetsPage() {
                       onClick={() => fileInputRef.current?.click()}
                       className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {upload.isPending ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+                      {upload.isPending ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <Upload className="size-3" />
+                      )}
                       {uploadReady ? "Upload file" : "Storage not wired"}
                     </button>
                   ) : (
@@ -163,8 +223,12 @@ export function AssetsPage() {
                     <tr key={a.id} className="border-t">
                       <td className="num px-4 py-2 text-muted-foreground">{a.id}</td>
                       <td className="px-4 py-2 font-medium">{a.name}</td>
-                      <td className="px-4 py-2 text-muted-foreground">{ASSET_TYPE_LABEL[a.type]}</td>
-                      <td className="num px-4 py-2 text-muted-foreground">{coords(a.lat, a.lon)}</td>
+                      <td className="px-4 py-2 text-muted-foreground">
+                        {ASSET_TYPE_LABEL[a.type]}
+                      </td>
+                      <td className="num px-4 py-2 text-muted-foreground">
+                        {coords(a.lat, a.lon)}
+                      </td>
                       <td className="px-4 py-2">{STATUS_LABEL[a.status]}</td>
                     </tr>
                   ))}

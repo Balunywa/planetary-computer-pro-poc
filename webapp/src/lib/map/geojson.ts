@@ -12,7 +12,10 @@ export function destination(lon: number, lat: number, bearingDeg: number, miles:
   const la2 = Math.asin(Math.sin(la1) * Math.cos(d) + Math.cos(la1) * Math.sin(d) * Math.cos(br));
   const lo2 =
     lo1 +
-    Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(la1), Math.cos(d) - Math.sin(la1) * Math.sin(la2));
+    Math.atan2(
+      Math.sin(br) * Math.sin(d) * Math.cos(la1),
+      Math.cos(d) - Math.sin(la1) * Math.sin(la2),
+    );
   return [lo2 / R, la2 / R];
 }
 
@@ -86,11 +89,16 @@ export function conePolygon(points: { lon: number; lat: number; radiusMi: number
   return { type: "Polygon", coordinates: [ring] };
 }
 
-export function fc<P extends Record<string, unknown>>(features: Feature<never, P>[]): FeatureCollection {
+export function fc<P extends Record<string, unknown>>(
+  features: Feature<never, P>[],
+): FeatureCollection {
   return { type: "FeatureCollection", features: features as unknown as Feature[] };
 }
 
-export function feature(geometry: GeoJSON.Geometry, properties: Record<string, unknown> = {}): Feature {
+export function feature(
+  geometry: GeoJSON.Geometry,
+  properties: Record<string, unknown> = {},
+): Feature {
   return { type: "Feature", geometry, properties };
 }
 

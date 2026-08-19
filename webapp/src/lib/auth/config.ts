@@ -30,13 +30,9 @@ export function getEntraConfig(): EntraConfig | null {
   const runtime = typeof window !== "undefined" ? window.__APP_CONFIG__ : undefined;
 
   const clientId =
-    runtime?.entraClientId ||
-    (import.meta.env["VITE_ENTRA_CLIENT_ID"] as string | undefined) ||
-    "";
+    runtime?.entraClientId || (import.meta.env["VITE_ENTRA_CLIENT_ID"] as string | undefined) || "";
   const tenantId =
-    runtime?.entraTenantId ||
-    (import.meta.env["VITE_ENTRA_TENANT_ID"] as string | undefined) ||
-    "";
+    runtime?.entraTenantId || (import.meta.env["VITE_ENTRA_TENANT_ID"] as string | undefined) || "";
 
   if (!clientId || !tenantId) return null;
   return { clientId, tenantId };

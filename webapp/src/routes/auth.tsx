@@ -17,7 +17,10 @@ export const Route = createFileRoute("/auth")({
           "Sign in with Microsoft Entra ID to open your tenant's hurricane and asset risk operations console.",
       },
       { property: "og:title", content: "Sign in | Weather & Asset Risk" },
-      { property: "og:description", content: "Microsoft Entra ID single sign-on for operations teams." },
+      {
+        property: "og:description",
+        content: "Microsoft Entra ID single sign-on for operations teams.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "robots", content: "noindex" },

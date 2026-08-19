@@ -76,7 +76,6 @@ function token(name: string, fallback: string): string {
   return resolved;
 }
 
-
 function riskColor(level: RiskLevel | undefined): string {
   const varName = riskColorVar(level ?? "normal").replace(/^var\(|\)$/g, "");
   return token(varName, "rgb(100, 116, 139)");
@@ -168,17 +167,20 @@ export default function GeoMap({
       )
       .map((a) => {
         const r = risks.get(a.id);
-        return feature({ type: "Point", coordinates: [a.lon, a.lat] }, {
-          id: a.id,
-          name: a.name,
-          type: a.type,
-          major: MAJOR_TYPES.has(a.type) ? 1 : 0,
-          color: riskColor(r?.level),
-          score: r?.score ?? 0,
-          rank: RISK_RANK[r?.level ?? "normal"] ?? 0,
-          selected: selectedId === a.id ? 1 : 0,
-          highlighted: highlightIds.includes(a.id) ? 1 : 0,
-        });
+        return feature(
+          { type: "Point", coordinates: [a.lon, a.lat] },
+          {
+            id: a.id,
+            name: a.name,
+            type: a.type,
+            major: MAJOR_TYPES.has(a.type) ? 1 : 0,
+            color: riskColor(r?.level),
+            score: r?.score ?? 0,
+            rank: RISK_RANK[r?.level ?? "normal"] ?? 0,
+            selected: selectedId === a.id ? 1 : 0,
+            highlighted: highlightIds.includes(a.id) ? 1 : 0,
+          },
+        );
       });
     return { type: "FeatureCollection", features: feats as Feature[] };
   }, [assets, risks, selectedId, highlightIds]);
@@ -187,12 +189,15 @@ export default function GeoMap({
     const feats = assets
       .filter((a) => a.type === "pipeline" && a.geometry)
       .map((a) =>
-        feature({ type: "LineString", coordinates: a.geometry as number[][] }, {
-          id: a.id,
-          name: a.name,
-          color: riskColor(risks.get(a.id)?.level),
-          selected: selectedId === a.id ? 1 : 0,
-        }),
+        feature(
+          { type: "LineString", coordinates: a.geometry as number[][] },
+          {
+            id: a.id,
+            name: a.name,
+            color: riskColor(risks.get(a.id)?.level),
+            selected: selectedId === a.id ? 1 : 0,
+          },
+        ),
       );
     return { type: "FeatureCollection", features: feats as Feature[] };
   }, [assets, risks, selectedId]);
@@ -204,14 +209,19 @@ export default function GeoMap({
     });
     const historyLine = feature({ type: "LineString", coordinates: event.history });
     const cone = feature(
-      conePolygon(event.forecast.map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi }))),
+      conePolygon(
+        event.forecast.map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi })),
+      ),
     );
     const points = event.forecast.map((p) =>
-      feature({ type: "Point", coordinates: [p.lon, p.lat] }, {
-        color: categoryColor(p.category, p.windMph),
-        label: categoryLabel(p.category, p.windMph),
-        detail: `+${p.hour}h · ${p.windMph} mph`,
-      }),
+      feature(
+        { type: "Point", coordinates: [p.lon, p.lat] },
+        {
+          color: categoryColor(p.category, p.windMph),
+          label: categoryLabel(p.category, p.windMph),
+          detail: `+${p.hour}h · ${p.windMph} mph`,
+        },
+      ),
     );
     return {
       forecast: { type: "FeatureCollection", features: [forecastLine] } as FeatureCollection,
@@ -244,7 +254,9 @@ export default function GeoMap({
       cone: {
         type: "FeatureCollection",
         features: [
-          feature(conePolygon(prev.map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi })))),
+          feature(
+            conePolygon(prev.map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi }))),
+          ),
         ],
       } as FeatureCollection,
     };
@@ -286,10 +298,13 @@ export default function GeoMap({
     () => ({
       type: "FeatureCollection",
       features: [
-        feature({ type: "Point", coordinates: [pos.lon, pos.lat] }, {
-          name: event.name,
-          wind: `${pos.windMph} mph`,
-        }) as Feature,
+        feature(
+          { type: "Point", coordinates: [pos.lon, pos.lat] },
+          {
+            name: event.name,
+            wind: `${pos.windMph} mph`,
+          },
+        ) as Feature,
       ],
     }),
     [pos, event.name],
@@ -323,7 +338,9 @@ export default function GeoMap({
 
     setZoomLevel(map.getZoom());
     map.on("move", () => setZoomLevel(map.getZoom()));
-    map.on("mousemove", (e: maplibregl.MapMouseEvent) => setCursor({ lon: e.lngLat.lng, lat: e.lngLat.lat }));
+    map.on("mousemove", (e: maplibregl.MapMouseEvent) =>
+      setCursor({ lon: e.lngLat.lng, lat: e.lngLat.lat }),
+    );
     map.on("mouseout", () => setCursor(null));
     map.on("load", () => {
       setReady(true);
@@ -357,7 +374,6 @@ export default function GeoMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
   /** (Re)build every operational layer — also runs after a basemap style swap. */
   const buildRetryRef = useRef<(() => void) | null>(null);
   const buildLayers = useCallback(() => {
@@ -369,7 +385,6 @@ export default function GeoMap({
       map.once("idle", () => buildRetryRef.current?.());
       return;
     }
-
 
     const src = (id: string, data: FeatureCollection) => {
       const existing = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
@@ -503,7 +518,12 @@ export default function GeoMap({
       id: "asset-halo",
       type: "circle",
       source: "assets",
-      filter: ["any", ["==", ["get", "selected"], 1], ["==", ["get", "highlighted"], 1], [">=", ["get", "rank"], 4]],
+      filter: [
+        "any",
+        ["==", ["get", "selected"], 1],
+        ["==", ["get", "highlighted"], 1],
+        [">=", ["get", "rank"], 4],
+      ],
       paint: {
         "circle-radius": 13,
         "circle-color": ["get", "color"],
@@ -656,7 +676,6 @@ export default function GeoMap({
     if (ready) buildLayers();
   }, [ready, buildLayers]);
 
-
   // basemap swap re-adds the operational layers on top of the new style
   const lastBasemap = useRef<string | null>(null);
   useEffect(() => {
@@ -718,14 +737,14 @@ export default function GeoMap({
     const map = mapRef.current;
     if (!map || !ready || !selectedId) return;
     const a = assets.find((x) => x.id === selectedId);
-    if (a) map.easeTo({ center: [a.lon, a.lat], zoom: Math.max(map.getZoom(), 6.5), duration: 700 });
+    if (a)
+      map.easeTo({ center: [a.lon, a.lat], zoom: Math.max(map.getZoom(), 6.5), duration: 700 });
   }, [selectedId, ready, assets]);
 
   const resetView = () => {
     userMovedRef.current = false;
     mapRef.current?.fitBounds(GULF_BOUNDS, { padding: 24, duration: 600 });
   };
-
 
   return (
     <div className={cn("relative overflow-hidden bg-ocean-deep", className)}>
@@ -748,7 +767,10 @@ export default function GeoMap({
             if (!r) return null;
             return (
               <div className="mt-1.5 flex items-center gap-2">
-                <span className="size-2 rounded-full" style={{ backgroundColor: riskColorVar(r.level) }} />
+                <span
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: riskColorVar(r.level) }}
+                />
                 <span className="num font-semibold">{r.score}</span>
                 <span className="text-muted-foreground capitalize">{r.level}</span>
                 {r.hoursToImpact !== null && (
@@ -774,7 +796,9 @@ export default function GeoMap({
               onClick={() => setBasemap(id)}
               disabled={satellite && id !== "satellite"}
               className={`px-2 py-1 text-[10px] tracking-wide uppercase transition-colors disabled:opacity-40 ${
-                activeBasemap === id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60"
+                activeBasemap === id
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent/60"
               }`}
             >
               {label}
@@ -782,23 +806,27 @@ export default function GeoMap({
           ))}
         </div>
         <div className="flex flex-col gap-1 rounded-md border bg-popover/90 p-1 backdrop-blur">
-        <button
-          className="rounded-sm p-1.5 hover:bg-accent"
-          onClick={() => mapRef.current?.zoomIn()}
-          aria-label="Zoom in"
-        >
-          <Plus className="size-4" />
-        </button>
-        <button
-          className="rounded-sm p-1.5 hover:bg-accent"
-          onClick={() => mapRef.current?.zoomOut()}
-          aria-label="Zoom out"
-        >
-          <Minus className="size-4" />
-        </button>
-        <button className="rounded-sm p-1.5 hover:bg-accent" onClick={resetView} aria-label="Reset view">
-          <Crosshair className="size-4" />
-        </button>
+          <button
+            className="rounded-sm p-1.5 hover:bg-accent"
+            onClick={() => mapRef.current?.zoomIn()}
+            aria-label="Zoom in"
+          >
+            <Plus className="size-4" />
+          </button>
+          <button
+            className="rounded-sm p-1.5 hover:bg-accent"
+            onClick={() => mapRef.current?.zoomOut()}
+            aria-label="Zoom out"
+          >
+            <Minus className="size-4" />
+          </button>
+          <button
+            className="rounded-sm p-1.5 hover:bg-accent"
+            onClick={resetView}
+            aria-label="Reset view"
+          >
+            <Crosshair className="size-4" />
+          </button>
         </div>
       </div>
 
@@ -815,14 +843,18 @@ export default function GeoMap({
           <div className="flex gap-3">
             {(["normal", "monitor", "elevated", "high", "critical"] as const).map((l) => (
               <span key={l} className="flex items-center gap-1 capitalize">
-                <span className="size-2 rounded-full" style={{ backgroundColor: riskColorVar(l) }} />
+                <span
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: riskColorVar(l) }}
+                />
                 {l}
               </span>
             ))}
           </div>
         </div>
         <div className="pointer-events-none text-[9.5px] text-muted-foreground/70">
-          Basemap: {basemapProviderLabel} · Hazard layers: Planetary Computer Pro · Track: Aurora/ECMWF cycle
+          Basemap: {basemapProviderLabel} · Hazard layers: Planetary Computer Pro · Track:
+          Aurora/ECMWF cycle
         </div>
       </div>
     </div>

@@ -21,9 +21,15 @@ import { ASSET_TYPE_LABEL, RISK_LABEL, relativeTime, riskColorVar } from "@/lib/
 import type { AssetType, PostureLevel, RiskLevel } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
 
-
 const LEVEL_FILTERS: RiskLevel[] = ["critical", "high", "elevated", "monitor"];
-const TYPE_FILTERS: AssetType[] = ["offshore_platform", "pipeline", "well", "refinery", "lng_terminal", "port"];
+const TYPE_FILTERS: AssetType[] = [
+  "offshore_platform",
+  "pipeline",
+  "well",
+  "refinery",
+  "lng_terminal",
+  "port",
+];
 
 const POSTURE_TONE: Record<PostureLevel, RiskLevel> = {
   0: "normal",
@@ -117,7 +123,10 @@ export function OverviewPage() {
   const pob = postures
     .filter((p) => filteredIds.has(p.assetId))
     .reduce(
-      (acc, p) => ({ current: acc.current + (p.pobCurrent ?? 0), normal: acc.normal + (p.pobNormal ?? 0) }),
+      (acc, p) => ({
+        current: acc.current + (p.pobCurrent ?? 0),
+        normal: acc.normal + (p.pobNormal ?? 0),
+      }),
       { current: 0, normal: 0 },
     );
 
@@ -135,8 +144,8 @@ export function OverviewPage() {
               </h1>
               {event ? (
                 <p className="num mt-0.5 text-[11px] text-muted-foreground">
-                  {event.status} · moving {Math.round(event.movementMph)} mph · {event.cycleId} updated{" "}
-                  {relativeTime(event.updatedAtIso)}
+                  {event.status} · moving {Math.round(event.movementMph)} mph · {event.cycleId}{" "}
+                  updated {relativeTime(event.updatedAtIso)}
                 </p>
               ) : (
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -161,9 +170,21 @@ export function OverviewPage() {
             </div>
           </div>
           <div className="mt-2.5 grid grid-cols-2 border-t sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-            <StatCell label="Assets monitored" value={metrics.monitored} sub="Across the asset register" />
-            <StatCell label="Assets exposed" value={metrics.exposed} sub="Elevated risk or higher" />
-            <StatCell label="Inside forecast cone" value={metrics.insideCone} sub="Projected impact corridor" />
+            <StatCell
+              label="Assets monitored"
+              value={metrics.monitored}
+              sub="Across the asset register"
+            />
+            <StatCell
+              label="Assets exposed"
+              value={metrics.exposed}
+              sub="Elevated risk or higher"
+            />
+            <StatCell
+              label="Inside forecast cone"
+              value={metrics.insideCone}
+              sub="Projected impact corridor"
+            />
             <StatCell label="High risk" value={metrics.high} tone="high" sub="Score 62–79" />
             <StatCell label="Critical" value={metrics.critical} tone="critical" sub="Score 80+" />
             <StatCell
@@ -191,12 +212,18 @@ export function OverviewPage() {
               onClick={() => setLevelFilter((s) => toggle(s, l))}
             >
               {RISK_LABEL[l]}
-              <span className="num ml-1 opacity-70">{risks.filter((r) => r.level === l).length}</span>
+              <span className="num ml-1 opacity-70">
+                {risks.filter((r) => r.level === l).length}
+              </span>
             </Chip>
           ))}
           <span className="mx-1 h-4 w-px bg-border" />
           {TYPE_FILTERS.map((t) => (
-            <Chip key={t} active={typeFilter.has(t)} onClick={() => setTypeFilter((s) => toggle(s, t))}>
+            <Chip
+              key={t}
+              active={typeFilter.has(t)}
+              onClick={() => setTypeFilter((s) => toggle(s, t))}
+            >
               {ASSET_TYPE_LABEL[t]}
             </Chip>
           ))}
@@ -276,13 +303,18 @@ export function OverviewPage() {
                           onMouseLeave={() => setHovered(null)}
                         >
                           <td className="px-4 py-1.5 font-medium">{asset.name}</td>
-                          <td className="px-3 py-1.5 text-muted-foreground">{ASSET_TYPE_LABEL[asset.type]}</td>
+                          <td className="px-3 py-1.5 text-muted-foreground">
+                            {ASSET_TYPE_LABEL[asset.type]}
+                          </td>
                           <td className="px-3 py-1.5">
                             <RiskBadge level={r.level} score={r.score} />
                           </td>
                           <td className="px-3 py-1.5">
                             {p && p.level > 0 ? (
-                              <span className="text-[11px]" style={{ color: riskColorVar(POSTURE_TONE[p.level]) }}>
+                              <span
+                                className="text-[11px]"
+                                style={{ color: riskColorVar(POSTURE_TONE[p.level]) }}
+                              >
                                 {POSTURE_LEVEL_LABEL[p.level]}
                               </span>
                             ) : (
@@ -331,11 +363,16 @@ export function OverviewPage() {
                   {event ? (
                     <>
                       <p className="text-xs leading-relaxed">
-                        <strong>{event.name}</strong> is the active system for the current forecast cycle.{" "}
-                        <strong>{metrics.insideCone} facilities</strong> sit inside the projected corridor and{" "}
-                        <strong>{metrics.exposed} assets</strong> carry elevated risk or higher.{" "}
-                        <strong>{breaches.length} configured thresholds</strong> are breached this cycle
-                        {metrics.firstImpactHours !== null ? `, with first onset in ${metrics.firstImpactHours} hours` : ""}.
+                        <strong>{event.name}</strong> is the active system for the current forecast
+                        cycle. <strong>{metrics.insideCone} facilities</strong> sit inside the
+                        projected corridor and <strong>{metrics.exposed} assets</strong> carry
+                        elevated risk or higher.{" "}
+                        <strong>{breaches.length} configured thresholds</strong> are breached this
+                        cycle
+                        {metrics.firstImpactHours !== null
+                          ? `, with first onset in ${metrics.firstImpactHours} hours`
+                          : ""}
+                        .
                       </p>
                       {event.cycleShift && (
                         <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -343,15 +380,15 @@ export function OverviewPage() {
                         </p>
                       )}
                       <div className="mt-2 text-[10px] text-muted-foreground">
-                        Grounded in the {event.cycleId} forecast cycle, asset register, threshold rules and risk
-                        model.
+                        Grounded in the {event.cycleId} forecast cycle, asset register, threshold
+                        rules and risk model.
                       </div>
                     </>
                   ) : (
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      No active weather event in the current forecast cycle. When the weather provider reports a
-                      system in the operating region, a grounded summary of exposed facilities and breached
-                      thresholds appears here.
+                      No active weather event in the current forecast cycle. When the weather
+                      provider reports a system in the operating region, a grounded summary of
+                      exposed facilities and breached thresholds appears here.
                     </p>
                   )}
                 </div>
@@ -366,7 +403,10 @@ export function OverviewPage() {
                   <div className="grid grid-cols-3 gap-2">
                     {postureRollup.map((p) => (
                       <div key={p.lvl} className="rounded-sm border px-2 py-2">
-                        <div className="text-[10px]" style={{ color: riskColorVar(POSTURE_TONE[p.lvl]) }}>
+                        <div
+                          className="text-[10px]"
+                          style={{ color: riskColorVar(POSTURE_TONE[p.lvl]) }}
+                        >
                           {POSTURE_LEVEL_LABEL[p.lvl]}
                         </div>
                         <div className="num mt-0.5 text-lg leading-none font-semibold">{p.n}</div>
@@ -390,20 +430,27 @@ export function OverviewPage() {
                   </div>
                   <ul className="space-y-1.5">
                     {breaches.slice(0, 5).map((b, i) => (
-                      <li key={`${b.ruleId}-${b.assetId}-${i}`} className="text-[11px] leading-snug">
+                      <li
+                        key={`${b.ruleId}-${b.assetId}-${i}`}
+                        className="text-[11px] leading-snug"
+                      >
                         <button
                           className="text-left hover:underline"
                           onClick={() => setSelected(b.assetId)}
                           onMouseEnter={() => setHovered(b.assetId)}
                           onMouseLeave={() => setHovered(null)}
                         >
-                          <span className="font-medium">{assetById.get(b.assetId)?.name ?? b.assetId}</span>
+                          <span className="font-medium">
+                            {assetById.get(b.assetId)?.name ?? b.assetId}
+                          </span>
                           <span className="text-muted-foreground"> — {b.ruleName}</span>
                         </button>
                       </li>
                     ))}
                     {breaches.length === 0 && (
-                      <li className="text-[11px] text-muted-foreground">No thresholds breached this cycle.</li>
+                      <li className="text-[11px] text-muted-foreground">
+                        No thresholds breached this cycle.
+                      </li>
                     )}
                   </ul>
                 </div>

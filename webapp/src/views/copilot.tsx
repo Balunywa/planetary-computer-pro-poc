@@ -8,7 +8,6 @@ import { useOpsSnapshot } from "@/lib/hooks/use-ops-data";
 import { getServices } from "@/lib/services";
 import type { CopilotAnswer } from "@/lib/domain/types";
 
-
 interface Turn {
   role: "user" | "assistant";
   text: string;
@@ -71,29 +70,38 @@ export function CopilotPage() {
                   <Sparkles className="size-3.5 text-primary" /> Suggested questions
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {getServices(base).copilot.suggestions().map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => ask(s)}
-                      className="rounded-md border bg-surface p-3 text-left text-xs hover:bg-accent"
-                    >
-                      {s}
-                    </button>
-                  ))}
+                  {getServices(base)
+                    .copilot.suggestions()
+                    .map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => ask(s)}
+                        className="rounded-md border bg-surface p-3 text-left text-xs hover:bg-accent"
+                      >
+                        {s}
+                      </button>
+                    ))}
                 </div>
               </div>
             )}
             {turns.map((t, i) => (
               <div key={i} className="flex gap-3">
                 <div className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-sm border bg-surface">
-                  {t.role === "user" ? <User className="size-3.5" /> : <Bot className="size-3.5 text-primary" />}
+                  {t.role === "user" ? (
+                    <User className="size-3.5" />
+                  ) : (
+                    <Bot className="size-3.5 text-primary" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1 text-xs">
                   {renderMarkdownish(t.text)}
                   {t.answer && t.answer.citations.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {t.answer.citations.map((c, j) => (
-                        <span key={j} className="rounded-sm border bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        <span
+                          key={j}
+                          className="rounded-sm border bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                        >
                           {c.label}
                         </span>
                       ))}
@@ -110,7 +118,11 @@ export function CopilotPage() {
                 </div>
               </div>
             ))}
-            {busy && <div className="text-xs text-muted-foreground">Analyzing current forecast and asset exposure…</div>}
+            {busy && (
+              <div className="text-xs text-muted-foreground">
+                Analyzing current forecast and asset exposure…
+              </div>
+            )}
           </div>
           <form
             className="flex items-center gap-2 border-t p-3"

@@ -64,7 +64,6 @@ export function risksQuery(base: OpsBase, horizonHours: number) {
   });
 }
 
-
 export interface OpsSnapshot {
   assets: Asset[];
   risks: AssetRisk[];
