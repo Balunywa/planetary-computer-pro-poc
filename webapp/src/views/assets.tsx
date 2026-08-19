@@ -1,11 +1,24 @@
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { Check, Database, FileSpreadsheet, Globe, Layers, Plug, Server } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
+import { CheckCircle2, Database, FileSpreadsheet, Globe, Layers, Loader2, Plug, Server, Upload } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { useOpsBase } from "@/components/ops/ops-nav";
 import { assetsQuery } from "@/lib/hooks/use-ops-data";
+import { getDataPlaneStatus, uploadAsset } from "@/lib/services/azure/server";
 import { ASSET_TYPE_LABEL, STATUS_LABEL, coords } from "@/lib/format";
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
 
 
 const CONNECTORS = [
@@ -37,6 +50,24 @@ export function AssetsPage() {
   const base = useOpsBase();
   const assets = useQuery(assetsQuery(base)).data ?? [];
   const [q, setQ] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const status = useQuery({
+    queryKey: [base, "data-plane-status"],
+    queryFn: () => getDataPlaneStatus(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const uploadReady = status.data?.uploadConfigured ?? false;
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const contentBase64 = await readAsBase64(file);
+      return uploadAsset({ data: { name: file.name, contentBase64, contentType: file.type } });
+    },
+    onSuccess: (res) => setNote({ ok: res.ok, text: res.message }),
+    onError: () => setNote({ ok: false, text: "Upload failed unexpectedly." }),
+  });
 
   const rows = useMemo(
     () => assets.filter((a) => `${a.name} ${a.id} ${a.operator} ${a.region}`.toLowerCase().includes(q.toLowerCase())).slice(0, 100),
@@ -47,22 +78,58 @@ export function AssetsPage() {
     <AppShell>
       <PageHeader
         title="Asset Management"
-        description="Connect your infrastructure estate. The sample dataset is isolated and can be disabled once your own sources are connected."
+        description="Connect your infrastructure estate. Upload files directly to this deployment's storage, or wire a live source — nothing is pre-populated."
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) upload.mutate(file);
+          e.target.value = "";
+        }}
       />
       <div className="space-y-4 p-4">
         <div className="panel">
-          <div className="border-b px-4 py-2.5 label-xs">Data sources</div>
+          <div className="flex items-center justify-between border-b px-4 py-2.5">
+            <span className="label-xs">Data sources</span>
+            {note && (
+              <span
+                className={`inline-flex items-center gap-1.5 text-[11px] ${note.ok ? "text-risk-normal" : "text-risk-high"}`}
+              >
+                {note.ok && <CheckCircle2 className="size-3.5" />}
+                {note.text}
+              </span>
+            )}
+          </div>
           <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
-            {CONNECTORS.map((c) => (
-              <div key={c.id} className="bg-card p-4">
-                <div className="flex items-center gap-2">
-                  <c.icon className="size-4 text-primary" />
-                  <span className="text-xs font-medium">{c.name}</span>
+            {CONNECTORS.map((c) => {
+              const isUpload = c.status === "Available";
+              return (
+                <div key={c.id} className="bg-card p-4">
+                  <div className="flex items-center gap-2">
+                    <c.icon className="size-4 text-primary" />
+                    <span className="text-xs font-medium">{c.name}</span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">{c.detail}</p>
+                  {isUpload ? (
+                    <button
+                      disabled={!uploadReady || upload.isPending}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {upload.isPending ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+                      {uploadReady ? "Upload file" : "Storage not wired"}
+                    </button>
+                  ) : (
+                    <span className="mt-3 inline-block rounded-sm border px-2 py-1 text-[11px] text-muted-foreground">
+                      Configure at deploy time
+                    </span>
+                  )}
                 </div>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">{c.detail}</p>
-                <button className="mt-3 rounded-sm border px-2 py-1 text-[11px] hover:bg-accent">{c.status}</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -102,7 +169,7 @@ export function AssetsPage() {
               </table>
             </div>
             <div className="border-t px-4 py-2 text-[11px] text-muted-foreground">
-              Showing {rows.length} of {assets.length} assets from the sample dataset.
+              Showing {rows.length} of {assets.length} assets in the tenant register.
             </div>
           </div>
 
@@ -123,15 +190,15 @@ export function AssetsPage() {
               </table>
             </div>
             <div className="panel p-4">
-              <div className="label-xs mb-2">Sample data isolation</div>
+              <div className="label-xs mb-2">How ingestion works</div>
               <ul className="space-y-1.5 text-[11px] text-muted-foreground">
                 {[
-                  "Sample assets are served by a dedicated sample provider",
-                  "Risk scoring, alerts and the assistant read the same interfaces as production sources",
-                  "Disabling the sample dataset leaves no residual references in the application",
+                  "Uploaded files land in the deployment's blob container via managed identity — no keys",
+                  "Risk scoring, alerts and the assistant read the same interfaces as live sources",
+                  "Live connectors (ArcGIS, storage, data platform, REST) are wired at deploy time",
                 ].map((t) => (
                   <li key={t} className="flex gap-2">
-                    <Check className="mt-0.5 size-3 shrink-0 text-primary" />
+                    <CheckCircle2 className="mt-0.5 size-3 shrink-0 text-primary" />
                     {t}
                   </li>
                 ))}

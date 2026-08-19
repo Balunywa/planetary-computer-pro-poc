@@ -27,7 +27,12 @@ import type {
   ThresholdService,
   WeatherService,
 } from "@/lib/services/interfaces";
-import { askFoundryCopilot, listStacLayers } from "@/lib/services/azure/server";
+import {
+  askFoundryCopilot,
+  listStacLayers,
+  loadThresholdRules,
+  saveThresholdRules,
+} from "@/lib/services/azure/server";
 
 /** Geospatial layers from the tenant's GeoCatalog STAC collections. */
 export class AzurePlanetaryComputerService implements PlanetaryComputerService {
@@ -111,27 +116,44 @@ export class AzurePostureService implements PostureService {
 }
 
 /**
- * Threshold rules are operator configuration (not sample weather data), so a
- * fresh deployment starts from the same sensible defaults and persists edits in
- * memory until backed by a tenant store.
+ * Threshold rules are operator configuration (not sample weather data). A fresh
+ * deployment starts from the built-in starter defaults; operator edits are
+ * persisted as a JSON blob in the deployment's storage container (see
+ * loadThresholdRules / saveThresholdRules) so tuned limits survive restarts.
+ * When storage is unwired (local dev) edits stay in memory for the session.
  */
 export class AzureThresholdService implements ThresholdService {
-  private rules: ThresholdRule[] = [...DEFAULT_RULES];
-  async listRules(): Promise<ThresholdRule[]> {
+  private rules: ThresholdRule[] | null = null;
+
+  /** Load persisted rules once; fall back to built-in starter defaults. */
+  private async ensure(): Promise<ThresholdRule[]> {
+    if (this.rules) return this.rules;
+    const stored = await loadThresholdRules();
+    this.rules = stored && stored.length > 0 ? stored : DEFAULT_RULES.map((r) => ({ ...r }));
     return this.rules;
+  }
+
+  private async persist(rules: ThresholdRule[]): Promise<ThresholdRule[]> {
+    this.rules = rules;
+    await saveThresholdRules({ data: { rules } });
+    return rules;
+  }
+
+  async listRules(): Promise<ThresholdRule[]> {
+    return this.ensure();
   }
   async saveRule(rule: ThresholdRule): Promise<ThresholdRule[]> {
-    const i = this.rules.findIndex((r) => r.id === rule.id);
-    if (i >= 0) this.rules[i] = rule;
-    else this.rules.push(rule);
-    return this.rules;
+    const rules = [...(await this.ensure())];
+    const i = rules.findIndex((r) => r.id === rule.id);
+    if (i >= 0) rules[i] = rule;
+    else rules.push(rule);
+    return this.persist(rules);
   }
   async deleteRule(id: string): Promise<ThresholdRule[]> {
-    this.rules = this.rules.filter((r) => r.id !== id);
-    return this.rules;
+    const rules = (await this.ensure()).filter((r) => r.id !== id);
+    return this.persist(rules);
   }
   async resetRules(): Promise<ThresholdRule[]> {
-    this.rules = [...DEFAULT_RULES];
-    return this.rules;
+    return this.persist(DEFAULT_RULES.map((r) => ({ ...r })));
   }
 }

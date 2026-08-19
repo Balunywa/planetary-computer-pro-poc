@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
   "contentVersion": "1.0.0.0",
   "metadata": {
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "13960260973587029168"
+      "templateHash": "15676062778251105036"
     }
   },
   "parameters": {
@@ -66,14 +67,21 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Microsoft Entra SPA app registration (client) ID the web app uses for MSAL sign-in. This is a public identifier, not a secret."
+        "description": "Microsoft Entra SPA app registration (client) ID the web app uses for MSAL sign-in. This is a public identifier, not a secret. Leave blank to have the deployment register the app automatically (see autoRegisterEntraApp)."
       }
     },
     "entraTenantId": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret."
+        "description": "Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret. Leave blank to use the tenant the deployment runs in."
+      }
+    },
+    "autoRegisterEntraApp": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Automatically register the Microsoft Entra SPA app the web app signs in with, wiring its client ID into the site. Requires the person running the deployment to have rights to create app registrations (Application Administrator or Application.ReadWrite.All). Turn off to supply entraClientId yourself."
       }
     },
     "deployAiAgent": {
@@ -145,6 +153,9 @@
     "effectiveGeoCatalogName": "[if(empty(parameters('geoCatalogName')), toLower(format('pcpro{0}', uniqueString(resourceGroup().id))), parameters('geoCatalogName'))]",
     "appServicePlanName": "[format('{0}-plan-{1}', variables('namePrefix'), variables('amlSuffix'))]",
     "webAppName": "[format('pcpro-web-{0}', variables('amlSuffix'))]",
+    "webAppHost": "[format('{0}.azurewebsites.net', variables('webAppName'))]",
+    "registerEntraApp": "[and(parameters('deployWebApp'), parameters('autoRegisterEntraApp'))]",
+    "effectiveEntraTenantId": "[if(empty(parameters('entraTenantId')), tenant().tenantId, parameters('entraTenantId'))]",
     "sampleStorageName": "[toLower(format('pcpro{0}', uniqueString(resourceGroup().id)))]",
     "ingestIdentityName": "[format('{0}-ingest-identity', variables('namePrefix'))]",
     "sampleContainerName": "sample-assets",
@@ -162,8 +173,14 @@
     "auroraDeploymentName": "aurora",
     "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]"
   },
-  "resources": [
-    {
+  "imports": {
+    "microsoftGraphV1": {
+      "provider": "MicrosoftGraph",
+      "version": "0.2.0-preview"
+    }
+  },
+  "resources": {
+    "geoCatalog": {
       "type": "Microsoft.Orbital/geoCatalogs",
       "apiVersion": "2026-04-15",
       "name": "[variables('effectiveGeoCatalogName')]",
@@ -173,17 +190,17 @@
         "tier": "[parameters('geoCatalogTier')]"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]"
+        "ingestIdentity"
       ]
     },
-    {
+    "ingestIdentity": {
       "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
       "apiVersion": "2023-01-31",
       "name": "[variables('ingestIdentityName')]",
       "location": "[parameters('location')]"
     },
-    {
+    "sampleStorage": {
       "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-05-01",
@@ -199,16 +216,16 @@
         "supportsHttpsTrafficOnly": true
       }
     },
-    {
+    "sampleBlobService": {
       "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.Storage/storageAccounts/blobServices",
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}', variables('sampleStorageName'), 'default')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
+        "sampleStorage"
       ]
     },
-    {
+    "sampleContainer": {
       "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
       "apiVersion": "2023-05-01",
@@ -217,10 +234,10 @@
         "publicAccess": "None"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('sampleStorageName'), 'default')]"
+        "sampleBlobService"
       ]
     },
-    {
+    "modelOutputsContainer": {
       "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
       "apiVersion": "2023-05-01",
@@ -229,10 +246,10 @@
         "publicAccess": "None"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('sampleStorageName'), 'default')]"
+        "sampleBlobService"
       ]
     },
-    {
+    "blobReaderAssignment": {
       "condition": "[parameters('deploySampleStorage')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
@@ -240,15 +257,15 @@
       "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('ingestIdentityName'), variables('storageBlobDataReaderRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataReaderRoleId'))]",
-        "principalId": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, '')]",
+        "principalId": "[if(parameters('deploySampleStorage'), reference('ingestIdentity').principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
+        "ingestIdentity",
+        "sampleStorage"
       ]
     },
-    {
+    "appBlobContributorRole": {
       "condition": "[and(parameters('deploySampleStorage'), parameters('deployWebApp'))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
@@ -256,15 +273,15 @@
       "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('webAppName'), variables('storageBlobDataContributorRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
-        "principalId": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId, '')]",
+        "principalId": "[if(parameters('deployWebApp'), reference('webApp', '2023-12-01', 'full').identity.principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
-        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+        "sampleStorage",
+        "webApp"
       ]
     },
-    {
+    "appGeoCatalogAdminRole": {
       "condition": "[parameters('deployWebApp')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
@@ -272,15 +289,15 @@
       "name": "[guid(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), variables('webAppName'), variables('geoCatalogAdminRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('geoCatalogAdminRoleId'))]",
-        "principalId": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId, '')]",
+        "principalId": "[if(parameters('deployWebApp'), reference('webApp', '2023-12-01', 'full').identity.principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
-        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+        "geoCatalog",
+        "webApp"
       ]
     },
-    {
+    "openAi": {
       "condition": "[parameters('deployAiAgent')]",
       "type": "Microsoft.CognitiveServices/accounts",
       "apiVersion": "2024-10-01",
@@ -295,7 +312,7 @@
         "publicNetworkAccess": "Enabled"
       }
     },
-    {
+    "openAiDeployment": {
       "condition": "[parameters('deployAiAgent')]",
       "type": "Microsoft.CognitiveServices/accounts/deployments",
       "apiVersion": "2024-10-01",
@@ -313,10 +330,10 @@
         "versionUpgradeOption": "NoAutoUpgrade"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]"
+        "openAi"
       ]
     },
-    {
+    "openAiWebAppRole": {
       "condition": "[and(parameters('deployAiAgent'), parameters('deployWebApp'))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
@@ -324,15 +341,15 @@
       "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), variables('webAppName'), variables('cognitiveServicesOpenAiUserRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesOpenAiUserRoleId'))]",
-        "principalId": "[if(parameters('deployWebApp'), reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId, '')]",
+        "principalId": "[if(parameters('deployWebApp'), reference('webApp', '2023-12-01', 'full').identity.principalId, '')]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
-        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+        "openAi",
+        "webApp"
       ]
     },
-    {
+    "openAiDeployerRole": {
       "condition": "[parameters('deployAiAgent')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
@@ -343,10 +360,10 @@
         "principalId": "[deployer().objectId]"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]"
+        "openAi"
       ]
     },
-    {
+    "amlStorage": {
       "condition": "[parameters('deployAuroraModel')]",
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-05-01",
@@ -362,7 +379,7 @@
         "supportsHttpsTrafficOnly": true
       }
     },
-    {
+    "amlKeyVault": {
       "condition": "[parameters('deployAuroraModel')]",
       "type": "Microsoft.KeyVault/vaults",
       "apiVersion": "2023-07-01",
@@ -379,7 +396,7 @@
         "accessPolicies": []
       }
     },
-    {
+    "amlWorkspace": {
       "condition": "[parameters('deployAuroraModel')]",
       "type": "Microsoft.MachineLearningServices/workspaces",
       "apiVersion": "2023-10-01",
@@ -394,11 +411,11 @@
         "keyVault": "[resourceId('Microsoft.KeyVault/vaults', variables('amlKeyVaultName'))]"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('amlKeyVaultName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('amlStorageName'))]"
+        "amlKeyVault",
+        "amlStorage"
       ]
     },
-    {
+    "auroraEndpoint": {
       "condition": "[parameters('deployAuroraModel')]",
       "type": "Microsoft.MachineLearningServices/workspaces/onlineEndpoints",
       "apiVersion": "2023-10-01",
@@ -411,10 +428,10 @@
         "authMode": "Key"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.MachineLearningServices/workspaces', variables('amlWorkspaceName'))]"
+        "amlWorkspace"
       ]
     },
-    {
+    "auroraDeployment": {
       "condition": "[variables('deployAuroraDeployment')]",
       "type": "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments",
       "apiVersion": "2023-10-01",
@@ -430,10 +447,39 @@
         "instanceType": "[parameters('auroraInstanceType')]"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]"
+        "auroraEndpoint"
       ]
     },
-    {
+    "entraApp": {
+      "condition": "[variables('registerEntraApp')]",
+      "import": "microsoftGraphV1",
+      "type": "Microsoft.Graph/applications@v1.0",
+      "properties": {
+        "uniqueName": "[format('pcpro-web-{0}', variables('amlSuffix'))]",
+        "displayName": "[format('Planetary Computer Pro Ops ({0})', variables('amlSuffix'))]",
+        "signInAudience": "AzureADMyOrg",
+        "spa": {
+          "redirectUris": [
+            "[format('https://{0}/auth/callback', variables('webAppHost'))]"
+          ]
+        },
+        "web": {
+          "logoutUrl": "[format('https://{0}/', variables('webAppHost'))]"
+        }
+      }
+    },
+    "entraAppSp": {
+      "condition": "[variables('registerEntraApp')]",
+      "import": "microsoftGraphV1",
+      "type": "Microsoft.Graph/servicePrincipals@v1.0",
+      "properties": {
+        "appId": "[reference('entraApp').appId]"
+      },
+      "dependsOn": [
+        "entraApp"
+      ]
+    },
+    "appServicePlan": {
       "condition": "[parameters('deployWebApp')]",
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2023-12-01",
@@ -447,7 +493,7 @@
         "reserved": true
       }
     },
-    {
+    "webApp": {
       "condition": "[parameters('deployWebApp')]",
       "type": "Microsoft.Web/sites",
       "apiVersion": "2023-12-01",
@@ -477,7 +523,7 @@
             },
             {
               "name": "GEOCATALOG_URI",
-              "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
+              "value": "[reference('geoCatalog').catalogUri]"
             },
             {
               "name": "GEOCATALOG_API_VERSION",
@@ -485,15 +531,15 @@
             },
             {
               "name": "ENTRA_TENANT_ID",
-              "value": "[parameters('entraTenantId')]"
+              "value": "[variables('effectiveEntraTenantId')]"
             },
             {
               "name": "ENTRA_CLIENT_ID",
-              "value": "[parameters('entraClientId')]"
+              "value": "[if(variables('registerEntraApp'), reference('entraApp').appId, parameters('entraClientId'))]"
             },
             {
               "name": "FOUNDRY_ENDPOINT",
-              "value": "[if(parameters('deployAiAgent'), reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), '2024-10-01').endpoint, '')]"
+              "value": "[if(parameters('deployAiAgent'), reference('openAi').endpoint, '')]"
             },
             {
               "name": "FOUNDRY_DEPLOYMENT",
@@ -501,15 +547,15 @@
             },
             {
               "name": "AURORA_ENDPOINT",
-              "value": "[if(parameters('deployAuroraModel'), reference(resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName')), '2023-10-01').scoringUri, '')]"
+              "value": "[if(parameters('deployAuroraModel'), reference('auroraEndpoint').scoringUri, '')]"
             },
             {
               "name": "SAMPLE_CONTAINER_URL",
-              "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), '')]"
+              "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference('sampleStorage').primaryEndpoints.blob, variables('sampleContainerName')), '')]"
             },
             {
               "name": "UPLOAD_CONTAINER_URL",
-              "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('modelOutputsContainerName')), '')]"
+              "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference('sampleStorage').primaryEndpoints.blob, variables('modelOutputsContainerName')), '')]"
             },
             {
               "name": "UPLOAD_CONTAINER_NAME",
@@ -519,14 +565,15 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
-        "[resourceId('Microsoft.MachineLearningServices/workspaces/onlineEndpoints', variables('amlWorkspaceName'), variables('auroraEndpointName'))]",
-        "[resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName'))]",
-        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]"
+        "appServicePlan",
+        "auroraEndpoint",
+        "entraApp",
+        "geoCatalog",
+        "openAi",
+        "sampleStorage"
       ]
     }
-  ],
+  },
   "outputs": {
     "geoCatalogResourceId": {
       "type": "string",
@@ -537,7 +584,7 @@
       "metadata": {
         "description": "The GeoCatalog URI (catalogUri), including the platform-assigned domain hash. Use as GEOCATALOG_URL for the ingest script and Explorer."
       },
-      "value": "[reference(resourceId('Microsoft.Orbital/geoCatalogs', variables('effectiveGeoCatalogName')), '2026-04-15').catalogUri]"
+      "value": "[reference('geoCatalog').catalogUri]"
     },
     "geoCatalogPortalHint": {
       "type": "string",
@@ -556,11 +603,11 @@
     },
     "sampleContainerUrl": {
       "type": "string",
-      "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), '2023-05-01').primaryEndpoints.blob, variables('sampleContainerName')), 'not-deployed')]"
+      "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference('sampleStorage').primaryEndpoints.blob, variables('sampleContainerName')), 'not-deployed')]"
     },
     "aiAgentEndpoint": {
       "type": "string",
-      "value": "[if(parameters('deployAiAgent'), reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiName')), '2024-10-01').endpoint, 'not-deployed')]"
+      "value": "[if(parameters('deployAiAgent'), reference('openAi').endpoint, 'not-deployed')]"
     },
     "aiAgentDeployment": {
       "type": "string",
@@ -580,11 +627,11 @@
     },
     "ingestIdentityClientId": {
       "type": "string",
-      "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').clientId, 'not-deployed')]"
+      "value": "[if(parameters('deploySampleStorage'), reference('ingestIdentity').clientId, 'not-deployed')]"
     },
     "ingestIdentityObjectId": {
       "type": "string",
-      "value": "[if(parameters('deploySampleStorage'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('ingestIdentityName')), '2023-01-31').principalId, 'not-deployed')]"
+      "value": "[if(parameters('deploySampleStorage'), reference('ingestIdentity').principalId, 'not-deployed')]"
     },
     "webAppName": {
       "type": "string",
@@ -595,7 +642,35 @@
       "metadata": {
         "description": "Public URL of the web app. Deploy application code with `az webapp up` (or CI/CD) from the webapp/ folder; Oryx runs npm install + npm run build and starts `node server.mjs`."
       },
-      "value": "[if(parameters('deployWebApp'), format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01').defaultHostName), 'not-deployed')]"
+      "value": "[if(parameters('deployWebApp'), format('https://{0}', reference('webApp').defaultHostName), 'not-deployed')]"
+    },
+    "entraClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra client (application) ID the web app signs in with — either the auto-registered app or the entraClientId parameter."
+      },
+      "value": "[if(parameters('deployWebApp'), if(variables('registerEntraApp'), reference('entraApp').appId, parameters('entraClientId')), 'not-deployed')]"
+    },
+    "entraTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra tenant (directory) ID the web app signs in with."
+      },
+      "value": "[variables('effectiveEntraTenantId')]"
+    },
+    "entraAppAutoRegistered": {
+      "type": "bool",
+      "metadata": {
+        "description": "Whether the deployment registered the Entra app automatically. When false, set entraClientId (and grant the SPA redirect URI below) yourself."
+      },
+      "value": "[variables('registerEntraApp')]"
+    },
+    "entraRedirectUri": {
+      "type": "string",
+      "metadata": {
+        "description": "SPA redirect URI the Entra app must trust. Auto-registered when entraAppAutoRegistered is true; add it manually otherwise."
+      },
+      "value": "[if(parameters('deployWebApp'), format('https://{0}/auth/callback', variables('webAppHost')), 'not-deployed')]"
     }
   }
 }

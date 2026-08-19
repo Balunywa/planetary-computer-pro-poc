@@ -12,7 +12,27 @@ export function EventsPage() {
   const base = useOpsBase();
   const { assets, risks, riskMap, event } = useOpsSnapshot(base, 120);
   const [selected, setSelected] = useState<string | null>(null);
-  if (!event) return null;
+
+  if (!event) {
+    return (
+      <AppShell>
+        <PageHeader
+          title="Weather Events"
+          description="Active tropical and severe-weather systems affecting the operating region, with forecast trajectory and asset exposure."
+        />
+        <div className="p-4">
+          <div className="panel flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+            <h2 className="text-sm font-semibold">No active weather events</h2>
+            <p className="max-w-md text-[12px] leading-relaxed text-muted-foreground">
+              There are no tropical or severe-weather systems in the operating region for the current
+              forecast cycle. Active systems from the weather forecast provider will appear here with their
+              track, intensity and the assets they expose.
+            </p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   const affected = [...risks].filter((r) => r.score >= 42).sort((a, b) => b.score - a.score);
   const nameOf = (id: string) => assets.find((a) => a.id === id)?.name ?? id;

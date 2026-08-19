@@ -116,8 +116,16 @@
             "visible": "[contains(steps('components').selected, 'webApp')]",
             "options": {
               "icon": "Info",
-              "text": "An Azure App Service (Linux, Node) is created configured for the web app. Publish application code afterwards with 'az webapp up' from the webapp/ folder (or CI/CD) - Oryx runs npm install + npm run build and starts 'node server.mjs'. The Entra IDs below are optional and enable MSAL sign-in; the app registration must have a SPA redirect URI for the App Service URL."
+              "text": "An Azure App Service (Linux, Node) is created configured for the web app. Publish application code afterwards with 'az webapp up' from the webapp/ folder (or CI/CD) - Oryx runs npm install + npm run build and starts 'node server.mjs'. Sign-in uses Microsoft Entra: leave 'Register the sign-in app automatically' on and the deployment creates the app registration for you (you need rights to register apps). Turn it off to supply your own Entra IDs below."
             }
+          },
+          {
+            "name": "autoRegisterEntraApp",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Register the sign-in app automatically",
+            "defaultValue": true,
+            "toolTip": "Create the Microsoft Entra SPA app registration during deployment and wire its client ID into the web app. Requires you (the person deploying) to have rights to register apps (Application Administrator or Application.ReadWrite.All). Turn off to enter an existing app registration's IDs below.",
+            "visible": "[contains(steps('components').selected, 'webApp')]"
           },
           {
             "name": "appServiceSku",
@@ -141,26 +149,26 @@
             "type": "Microsoft.Common.TextBox",
             "label": "Entra tenant ID (optional)",
             "defaultValue": "",
-            "toolTip": "Directory (tenant) ID for MSAL sign-in. Public identifier (not a secret). Leave blank to configure sign-in later.",
+            "toolTip": "Directory (tenant) ID for MSAL sign-in. Public identifier (not a secret). Leave blank to use the tenant you deploy into.",
             "constraints": {
               "required": false,
               "regex": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
               "validationMessage": "Enter a GUID, e.g. 00000000-0000-0000-0000-000000000000, or leave blank."
             },
-            "visible": "[contains(steps('components').selected, 'webApp')]"
+            "visible": "[and(contains(steps('components').selected, 'webApp'), not(steps('webAppConfig').autoRegisterEntraApp))]"
           },
           {
             "name": "entraClientId",
             "type": "Microsoft.Common.TextBox",
             "label": "Entra client (application) ID (optional)",
             "defaultValue": "",
-            "toolTip": "Application (client) ID of the SPA app registration used for MSAL sign-in. Public identifier (not a secret). Leave blank to configure sign-in later.",
+            "toolTip": "Application (client) ID of the SPA app registration used for MSAL sign-in. Public identifier (not a secret). Required when automatic registration is turned off.",
             "constraints": {
               "required": false,
               "regex": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
               "validationMessage": "Enter a GUID, e.g. 00000000-0000-0000-0000-000000000000, or leave blank."
             },
-            "visible": "[contains(steps('components').selected, 'webApp')]"
+            "visible": "[and(contains(steps('components').selected, 'webApp'), not(steps('webAppConfig').autoRegisterEntraApp))]"
           }
         ]
       },
@@ -247,6 +255,7 @@
       "appServiceSku": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').appServiceSku, 'B1')]",
       "entraTenantId": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').entraTenantId, '')]",
       "entraClientId": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').entraClientId, '')]",
+      "autoRegisterEntraApp": "[if(contains(steps('components').selected, 'webApp'), steps('webAppConfig').autoRegisterEntraApp, false)]",
       "deployAiAgent": "[contains(steps('components').selected, 'aiAgent')]",
       "deployAuroraModel": "[contains(steps('components').selected, 'auroraModel')]",
       "openAiDeploymentName": "[if(contains(steps('components').selected, 'aiAgent'), steps('aiConfig').aiAgentSection.openAiDeploymentName, 'gpt-5-mini')]",

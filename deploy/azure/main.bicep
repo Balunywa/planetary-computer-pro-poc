@@ -7,6 +7,11 @@
 
 targetScope = 'resourceGroup'
 
+// The Microsoft Graph Bicep extension lets this template create the Entra app
+// registration the web app signs in with, using the credentials of whoever runs
+// the deployment. See bicepconfig.json for the extension version pin.
+extension microsoftGraphV1
+
 // ------------------------------------------------------------------------------------
 // Parameters
 // ------------------------------------------------------------------------------------
@@ -40,11 +45,14 @@ param deployWebApp bool = true
 @description('App Service plan SKU for the web app (e.g. F1, B1, P0v3, P1v3).')
 param appServiceSku string = 'B1'
 
-@description('Microsoft Entra SPA app registration (client) ID the web app uses for MSAL sign-in. This is a public identifier, not a secret.')
+@description('Microsoft Entra SPA app registration (client) ID the web app uses for MSAL sign-in. This is a public identifier, not a secret. Leave blank to have the deployment register the app automatically (see autoRegisterEntraApp).')
 param entraClientId string = ''
 
-@description('Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret.')
+@description('Microsoft Entra tenant (directory) ID for sign-in. This is a public identifier, not a secret. Leave blank to use the tenant the deployment runs in.')
 param entraTenantId string = ''
+
+@description('Automatically register the Microsoft Entra SPA app the web app signs in with, wiring its client ID into the site. Requires the person running the deployment to have rights to create app registrations (Application Administrator or Application.ReadWrite.All). Turn off to supply entraClientId yourself.')
+param autoRegisterEntraApp bool = true
 
 @description('Deploy an Azure OpenAI (Microsoft Foundry) account + model deployment for agentic / reasoning GeoAI scenarios against the GeoCatalog.')
 param deployAiAgent bool = true
@@ -84,6 +92,16 @@ var namePrefix = 'pcpro'
 var effectiveGeoCatalogName = empty(geoCatalogName) ? toLower('pcpro${uniqueString(resourceGroup().id)}') : geoCatalogName
 var appServicePlanName = '${namePrefix}-plan-${amlSuffix}'
 var webAppName = 'pcpro-web-${amlSuffix}'
+// Default App Service hostname. Used for the Entra SPA redirect URIs so the app
+// registration does not depend on the web app resource (avoids a dependency
+// cycle with the app settings that consume the registration's client ID).
+var webAppHost = '${webAppName}.azurewebsites.net'
+// Decide whether the template registers the Entra app itself.
+var registerEntraApp = deployWebApp && autoRegisterEntraApp
+// The client/tenant the web app actually signs in with: the auto-registered app
+// when enabled, otherwise the values supplied as parameters.
+var effectiveEntraClientId = registerEntraApp ? entraApp.appId : entraClientId
+var effectiveEntraTenantId = empty(entraTenantId) ? tenant().tenantId : entraTenantId
 var sampleStorageName = toLower('pcpro${uniqueString(resourceGroup().id)}')
 var ingestIdentityName = '${namePrefix}-ingest-identity'
 var sampleContainerName = 'sample-assets'
@@ -355,6 +373,34 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 }
 
 // ------------------------------------------------------------------------------------
+// Microsoft Entra app registration for MSAL sign-in.
+// Created with the Microsoft Graph Bicep extension, which runs as the identity that
+// launches the deployment — so anyone with rights to register apps (Application
+// Administrator / Application.ReadWrite.All) gets a working sign-in with no manual
+// portal step. It is a single-tenant SPA whose only redirect URIs are the web app's
+// default hostname; MSAL requests just openid/profile/email (delegated, no admin
+// consent). The client ID flows into the ENTRA_CLIENT_ID app setting below.
+// ------------------------------------------------------------------------------------
+resource entraApp 'Microsoft.Graph/applications@v1.0' = if (registerEntraApp) {
+  uniqueName: 'pcpro-web-${amlSuffix}'
+  displayName: 'Planetary Computer Pro Ops (${amlSuffix})'
+  signInAudience: 'AzureADMyOrg'
+  spa: {
+    redirectUris: [
+      'https://${webAppHost}/auth/callback'
+    ]
+  }
+  web: {
+    logoutUrl: 'https://${webAppHost}/'
+  }
+}
+
+// Service principal (enterprise app) in this tenant so users can consent and sign in.
+resource entraAppSp 'Microsoft.Graph/servicePrincipals@v1.0' = if (registerEntraApp) {
+  appId: entraApp.appId
+}
+
+// ------------------------------------------------------------------------------------
 // Web app: Azure App Service (Linux, Node) hosting the Planetary Computer Pro web app.
 // The site is created configured for Node 22; application code is published separately
 // (CI/CD or `az webapp up`), which Oryx builds (npm install + npm run build) and starts
@@ -409,11 +455,11 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
         }
         {
           name: 'ENTRA_TENANT_ID'
-          value: entraTenantId
+          value: effectiveEntraTenantId
         }
         {
           name: 'ENTRA_CLIENT_ID'
-          value: entraClientId
+          value: effectiveEntraClientId
         }
         {
           name: 'FOUNDRY_ENDPOINT'
@@ -465,3 +511,11 @@ output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.prop
 output webAppName string = deployWebApp ? webAppName : 'not-deployed'
 @description('Public URL of the web app. Deploy application code with `az webapp up` (or CI/CD) from the webapp/ folder; Oryx runs npm install + npm run build and starts `node server.mjs`.')
 output webAppUrl string = deployWebApp ? 'https://${webApp.properties.defaultHostName}' : 'not-deployed'
+@description('Entra client (application) ID the web app signs in with — either the auto-registered app or the entraClientId parameter.')
+output entraClientId string = deployWebApp ? effectiveEntraClientId : 'not-deployed'
+@description('Entra tenant (directory) ID the web app signs in with.')
+output entraTenantId string = effectiveEntraTenantId
+@description('Whether the deployment registered the Entra app automatically. When false, set entraClientId (and grant the SPA redirect URI below) yourself.')
+output entraAppAutoRegistered bool = registerEntraApp
+@description('SPA redirect URI the Entra app must trust. Auto-registered when entraAppAutoRegistered is true; add it manually otherwise.')
+output entraRedirectUri string = deployWebApp ? 'https://${webAppHost}/auth/callback' : 'not-deployed'

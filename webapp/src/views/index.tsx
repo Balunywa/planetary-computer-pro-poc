@@ -6,6 +6,7 @@ import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { AppShell } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
 import { AssetDetailPanel } from "@/components/ops/AssetDetailPanel";
+import { DataOnboarding } from "@/components/ops/DataOnboarding";
 import { RiskBadge, StatCell } from "@/components/ops/RiskBadge";
 import {
   alertsQuery,
@@ -213,17 +214,21 @@ export function OverviewPage() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-px bg-border xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="grid min-h-0 grid-rows-[auto_auto] gap-px bg-border xl:grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)]">
             <div className="relative h-[440px] min-h-0 bg-background lg:h-[520px] xl:h-auto">
-              {event && (
-                <OpsMap
-                  className="h-full w-full"
-                  assets={filteredAssets}
-                  risks={riskMap}
-                  event={event}
-                  layers={{ assets: true, track: true, wind: true, uncertainty: true }}
-                  selectedId={selected}
-                  highlightIds={hovered ? [hovered] : []}
-                  onSelect={setSelected}
-                />
+              {assets.length === 0 ? (
+                <DataOnboarding className="h-full" />
+              ) : (
+                event && (
+                  <OpsMap
+                    className="h-full w-full"
+                    assets={filteredAssets}
+                    risks={riskMap}
+                    event={event}
+                    layers={{ assets: true, track: true, wind: true, uncertainty: true }}
+                    selectedId={selected}
+                    highlightIds={hovered ? [hovered] : []}
+                    onSelect={setSelected}
+                  />
+                )
               )}
             </div>
 

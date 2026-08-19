@@ -1,132 +1,145 @@
-import { useState } from "react";
-import { Check, Shield, Activity, Boxes } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Boxes, Check, Database, ExternalLink, Shield, Sparkles } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
+import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
+import { layersQuery } from "@/lib/hooks/use-ops-data";
+import { getServiceConfig } from "@/lib/services/azure-config";
+import { getDataPlaneStatus } from "@/lib/services/azure/server";
 
+// Honest, read-only deployment status. Infrastructure is provisioned by the
+// Bicep/ARM template ("Deploy to Azure"), not from the app — so this page reports
+// what is actually wired to this deployment rather than pretending to configure it.
 
-const COMPONENTS = [
-  { id: "geospatial", name: "Geospatial catalog & imagery", detail: "Satellite imagery, terrain and reference layers for the operating region", on: true },
-  { id: "forecast", name: "Weather forecasting", detail: "Modular forecast providers; swap or blend models without UI changes", on: true },
-  { id: "copilot", name: "AI operations assistant", detail: "Grounded natural-language answers and operational summaries", on: true },
-  { id: "ingest", name: "Customer asset ingestion", detail: "Scheduled ingest from your GIS, storage and asset-master systems", on: true },
-  { id: "private", name: "Private networking", detail: "Private endpoints and virtual network integration; no public data plane", on: false },
-  { id: "monitoring", name: "Monitoring & diagnostics", detail: "Application telemetry, logs and operational dashboards", on: true },
-];
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
-const PACKS = [
-  "Severe Weather Operations",
-  "Pipeline Flood Risk",
-  "Wildfire & Right-of-Way Monitoring",
-  "Refinery Weather Risk",
-  "LNG Terminal Operations",
-  "Methane Monitoring",
-  "Environmental Monitoring",
-  "Remote Asset Intelligence",
-  "Earth Observation",
-  "Exploration Geospatial Intelligence",
-];
-
-const ROLES = [
+const ROLES: [string, string][] = [
   ["Viewer", "Read-only access to dashboards, map and alerts"],
   ["Operator", "Acknowledge and resolve alerts, adjust thresholds for owned assets"],
   ["Analyst", "Configure risk weightings, forecast providers and reporting"],
   ["Administrator", "Manage tenancy, data connections, roles and deployment settings"],
 ];
 
+const SECURITY: string[] = [
+  "Microsoft Entra sign-in with your directory's MFA and conditional access",
+  "Managed identity for service-to-service access — no keys in the app or source",
+  "Data-plane roles (GeoCatalog, Storage, AI) assigned to the app identity at deploy time",
+  "Non-secret configuration published at runtime; secrets never reach the browser",
+];
+
 export function DeploymentPage() {
-  const [components, setComponents] = useState(() => Object.fromEntries(COMPONENTS.map((c) => [c.id, c.on])));
-  const [region, setRegion] = useState("South Central US");
-  const [packs, setPacks] = useState<string[]>([PACKS[0]!]);
+  const base = useOpsBase();
+  const cfg = getServiceConfig();
+  const status = useQuery({
+    queryKey: [base, "data-plane-status"],
+    queryFn: () => getDataPlaneStatus(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const layers = useQuery(layersQuery(base));
+
+  const geoCatalogWired = Boolean(cfg.geoCatalogUrl);
+  const foundryWired = Boolean(cfg.foundryEndpoint);
+  const uploadWired = status.data?.uploadConfigured ?? false;
+
+  const services: { name: string; detail: string; wired: boolean; endpoint?: string }[] = [
+    {
+      name: "Geospatial catalog (Planetary Computer Pro)",
+      detail: "STAC collections and imagery for the operating region",
+      wired: geoCatalogWired,
+      endpoint: cfg.geoCatalogUrl ? hostOf(cfg.geoCatalogUrl) : undefined,
+    },
+    {
+      name: "AI operations assistant (Azure OpenAI)",
+      detail: cfg.foundryDeployment ? `Deployment: ${cfg.foundryDeployment}` : "Grounded natural-language answers",
+      wired: foundryWired,
+      endpoint: cfg.foundryEndpoint ? hostOf(cfg.foundryEndpoint) : undefined,
+    },
+    {
+      name: "Data storage & upload",
+      detail: "Blob container for uploaded assets and catalog ingestion sources",
+      wired: uploadWired,
+    },
+  ];
 
   return (
     <AppShell>
       <PageHeader
         title="Deployment"
-        description="Infrastructure configuration is kept separate from application code so deployment automation can be added or extended without touching the product."
+        description="Infrastructure is provisioned by the deployment template using your Azure credentials. This page reports what is wired to this deployment — it does not provision resources."
       />
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-4">
-          <div className="panel p-4">
-            <div className="label-xs mb-3">1 · Target environment</div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs">
-                <span className="label-xs block">Subscription</span>
-                <select className="mt-1 w-full rounded-sm border bg-card px-2 py-1.5 text-xs">
-                  <option>Energy Operations — Production</option>
-                  <option>Energy Operations — Non-production</option>
-                </select>
-              </label>
-              <label className="text-xs">
-                <span className="label-xs block">Region</span>
-                <select
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                  className="mt-1 w-full rounded-sm border bg-card px-2 py-1.5 text-xs"
-                >
-                  {["South Central US", "East US 2", "West Europe", "UK South", "UAE North"].map((r) => (
-                    <option key={r}>{r}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
           <div className="panel">
-            <div className="border-b px-4 py-2.5 label-xs">2 · Components</div>
+            <div className="flex items-center justify-between border-b px-4 py-2.5">
+              <span className="label-xs">Connected Azure services</span>
+              {status.isLoading && <span className="text-[11px] text-muted-foreground">Checking…</span>}
+            </div>
             <ul className="divide-y">
-              {COMPONENTS.map((c) => (
-                <li key={c.id} className="flex items-start justify-between gap-4 px-4 py-3">
-                  <div>
-                    <div className="text-xs font-medium">{c.name}</div>
-                    <div className="text-[11px] text-muted-foreground">{c.detail}</div>
+              {services.map((s) => (
+                <li key={s.name} className="flex items-start justify-between gap-4 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium">{s.name}</div>
+                    <div className="text-[11px] text-muted-foreground">{s.detail}</div>
+                    {s.endpoint && (
+                      <div className="num mt-0.5 truncate text-[10px] text-muted-foreground/80">{s.endpoint}</div>
+                    )}
                   </div>
-                  <button
-                    onClick={() => setComponents((s) => ({ ...s, [c.id]: !s[c.id] }))}
-                    className={`h-5 w-9 shrink-0 rounded-full border transition-colors ${
-                      components[c.id] ? "bg-primary" : "bg-muted"
+                  <span
+                    className={`mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-[10px] font-medium ${
+                      s.wired
+                        ? "border-risk-normal/50 bg-risk-normal/10 text-risk-normal"
+                        : "border-border text-muted-foreground"
                     }`}
-                    aria-label={c.name}
                   >
-                    <span
-                      className={`block size-4 rounded-full bg-background transition-transform ${
-                        components[c.id] ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
+                    <span className={`size-1.5 rounded-full ${s.wired ? "bg-risk-normal" : "bg-muted-foreground/50"}`} />
+                    {s.wired ? "Connected" : "Not configured"}
+                  </span>
                 </li>
               ))}
             </ul>
           </div>
 
           <div className="panel p-4">
-            <div className="label-xs mb-3">3 · Solution packs</div>
-            <div className="flex flex-wrap gap-2">
-              {PACKS.map((p, i) => {
-                const on = packs.includes(p);
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setPacks((s) => (on ? s.filter((x) => x !== p) : [...s, p]))}
-                    className={`rounded-sm border px-2.5 py-1.5 text-[11px] ${on ? "border-primary/50 bg-primary/10 text-primary" : "hover:bg-accent"}`}
-                  >
-                    {p}
-                    {i > 0 && !on && <span className="ml-1.5 text-muted-foreground">preview</span>}
-                  </button>
-                );
-              })}
+            <div className="label-xs mb-2 flex items-center gap-1.5">
+              <Database className="size-3.5 text-primary" /> Catalog contents
             </div>
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              Packs reuse the same platform shell, identity model, asset schema, data connectors, map and AI layer.
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              This deployment currently exposes{" "}
+              <span className="num font-medium text-foreground">{layers.data?.length ?? 0}</span> geospatial{" "}
+              {layers.data?.length === 1 ? "collection" : "collections"}. Assets are ingested from your GIS or
+              uploaded — nothing is pre-populated.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <OpsLink
+                to="/assets"
+                className="inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+              >
+                <Database className="size-3.5" /> Add data
+              </OpsLink>
+              <OpsLink
+                to="/"
+                className="inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] hover:bg-accent"
+              >
+                <Sparkles className="size-3.5" /> Load a public sample
+              </OpsLink>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button className="rounded-sm bg-primary px-4 py-2 text-xs font-medium text-primary-foreground">
-              Review & deploy
-            </button>
-            <span className="text-[11px] text-muted-foreground">
-              Generates an infrastructure plan; application code is deployed unchanged.
-            </span>
+          <div className="panel p-4">
+            <div className="label-xs mb-2 flex items-center gap-1.5">
+              <Boxes className="size-3.5 text-primary" /> Service adapters
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Assets, weather, events, risk, geospatial, alerts and the assistant are served through stable
+              interfaces backed by the tenant's Azure resources. Each returns an honest empty result until the
+              corresponding data is ingested — the app never falls back to synthetic sample data.
+            </p>
           </div>
         </div>
 
@@ -136,13 +149,7 @@ export function DeploymentPage() {
               <Shield className="size-3.5 text-primary" /> Security posture
             </div>
             <ul className="space-y-1.5 text-[11px] text-muted-foreground">
-              {[
-                "Enterprise identity with single sign-on and conditional access",
-                "Managed identity for service-to-service access",
-                "Secrets held in a managed vault; none in source control",
-                "Private endpoints and virtual network integration available",
-                "Environment-based configuration for every deployment stage",
-              ].map((t) => (
+              {SECURITY.map((t) => (
                 <li key={t} className="flex gap-2">
                   <Check className="mt-0.5 size-3 shrink-0 text-primary" />
                   {t}
@@ -164,35 +171,24 @@ export function DeploymentPage() {
           </div>
 
           <div className="panel p-4">
-            <div className="label-xs mb-2 flex items-center gap-1.5">
-              <Activity className="size-3.5 text-primary" /> Operational health
-            </div>
-            <ul className="space-y-2 text-[11px]">
-              {[
-                ["Forecast ingest", "Healthy · last cycle 4 min ago"],
-                ["Asset synchronization", "Healthy · 186 assets, 6 min ago"],
-                ["Risk engine", "Healthy · full estate rescored 4 min ago"],
-                ["Assistant service", "Healthy · median response 1.2 s"],
-              ].map(([k, v]) => (
-                <li key={k} className="flex items-center justify-between gap-2">
-                  <span>{k}</span>
-                  <span className="text-muted-foreground">{v}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="panel p-4">
-            <div className="label-xs mb-2 flex items-center gap-1.5">
-              <Boxes className="size-3.5 text-primary" /> Service adapters
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Assets, weather, events, risk, geospatial, alerts and assistant are served through stable interfaces. Sample
-              providers ship by default and are replaced one at a time with live integrations — no UI rewrite.
+            <div className="label-xs mb-2">Provisioning</div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Resources are created by the deployment template (Bicep/ARM) under your subscription, with the
+              app's managed identity granted the data-plane roles above. To change what is deployed, redeploy the
+              template — application code ships unchanged.
             </p>
+            <a
+              href="https://learn.microsoft.com/azure/planetary-computer/"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+            >
+              Planetary Computer Pro documentation <ExternalLink className="size-3" />
+            </a>
           </div>
         </div>
       </div>
     </AppShell>
   );
 }
+

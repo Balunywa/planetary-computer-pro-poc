@@ -212,16 +212,35 @@ az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
   -p deployWebApp=false deploySampleStorage=false
 ```
 
-To set the App Service SKU and (optionally) the Entra IDs for MSAL sign-in:
+To set the App Service SKU:
 
 ```bash
 az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
-  -p appServiceSku=B1 entraTenantId='<tenant-guid>' entraClientId='<spa-client-guid>'
+  -p appServiceSku=B1
+```
+
+### Sign-in (Microsoft Entra)
+
+By default the deployment **registers the Entra sign-in app for you**. It uses the Microsoft
+Graph Bicep extension, which runs as *you* (the person deploying), so no separate portal step
+is needed — the app registration is created, its SPA redirect URI (`https://<app>/auth/callback`)
+is set, and its client ID is wired into the web app's `ENTRA_CLIENT_ID` / `ENTRA_TENANT_ID`
+settings automatically. **You must have rights to register apps** in the tenant
+(**Application Administrator** or the **Application.ReadWrite.All** Graph permission).
+
+If you can't (or would rather use an existing app registration), turn auto-registration off and
+supply the IDs yourself — add your `https://<app>.azurewebsites.net/auth/callback` URL as a SPA
+redirect URI on that app first:
+
+```bash
+az deployment group create -g pcpro-poc-rg -f deploy/azure/main.bicep \
+  -p autoRegisterEntraApp=false entraTenantId='<tenant-guid>' entraClientId='<spa-client-guid>'
 ```
 
 The deployment outputs `geoCatalogName`, `geoCatalogResourceId`, `geoCatalogUri`,
 `webAppName`, `webAppUrl`, `sampleStorageAccount`, `sampleContainer`, `sampleContainerUrl`,
-`ingestIdentityClientId`, and `ingestIdentityObjectId`.
+`ingestIdentityClientId`, `ingestIdentityObjectId`, `entraClientId`, `entraTenantId`,
+`entraAppAutoRegistered`, and `entraRedirectUri`.
 
 ## Grant yourself access to the GeoCatalog
 
@@ -319,8 +338,9 @@ this POC's infrastructure (GeoCatalog URI, storage, identities) satisfies its pr
   (GeoCatalog, storage, Foundry). The sample-data ingestion path uses a **user-assigned managed
   identity** scoped to **Storage Blob Data Reader** on the sample container only.
 - User sign-in is **Microsoft Entra ID (MSAL)**; the `entraTenantId` / `entraClientId` app
-  settings are public identifiers (not secrets). No tokens are handled in the browser — backend
-  routes act with the App Service identity.
+  settings are public identifiers (not secrets). The Entra app is a single-tenant SPA that
+  requests only `openid`/`profile`/`email` (delegated, no admin consent). It is registered at
+  deploy time using the deployer's own Entra credentials — the template holds no app secret.
 - App settings contain **no secrets**: storage and Foundry access use managed identity, and
   service URIs are public identifiers.
 - GeoCatalog data-plane access is governed by Azure RBAC (**GeoCatalog Administrator** /

@@ -16,11 +16,23 @@ interface Turn {
 }
 
 function renderMarkdownish(text: string) {
+  // Render assistant output as plain React nodes — never dangerouslySetInnerHTML.
+  // Model/tool output is untrusted; injecting it as HTML is an XSS vector. We only
+  // support **bold** spans and leading "- " bullets, everything else stays literal.
   return text.split("\n").map((line, i) => {
-    const html = line
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^- /, "• ");
-    return <p key={i} className="min-h-[0.5rem] leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
+    const bulleted = line.replace(/^-\s+/, "• ");
+    const parts = bulleted.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+    return (
+      <p key={i} className="min-h-[0.5rem] leading-relaxed">
+        {parts.map((part, j) =>
+          part.startsWith("**") && part.endsWith("**") ? (
+            <strong key={j}>{part.slice(2, -2)}</strong>
+          ) : (
+            <span key={j}>{part}</span>
+          ),
+        )}
+      </p>
+    );
   });
 }
 

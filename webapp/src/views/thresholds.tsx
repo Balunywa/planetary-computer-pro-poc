@@ -87,7 +87,7 @@ export function ThresholdsPage() {
     <AppShell>
       <PageHeader
         title="Operational thresholds"
-        description="The limits your procedures already use — crane cut-offs, helideck limits, shut-in triggers, flood watches — evaluated against every asset in the current forecast cycle. Breaches drive the alert feed."
+        description="Starter defaults based on common energy-sector limits (crane cut-offs, helideck limits, shut-in triggers, flood watches) — review and replace with your own operating procedures. Edits are saved to this deployment. Rules are evaluated against every asset in the current forecast cycle; breaches drive the alert feed."
         actions={
           <div className="flex gap-2">
             <button
