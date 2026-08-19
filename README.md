@@ -228,6 +228,21 @@ is set, and its client ID is wired into the web app's `ENTRA_CLIENT_ID` / `ENTRA
 settings automatically. **You must have rights to register apps** in the tenant
 (**Application Administrator** or the **Application.ReadWrite.All** Graph permission).
 
+> **If you don't have that role, the deployment fails at the app-registration step** with:
+>
+> ```
+> {"error":{"code":"Forbidden","target":"/resources/entraApp",
+>  "message":"Authorization_RequestDenied: Insufficient privileges to complete the operation..."}}
+> ```
+>
+> Because the web app reads the registration's client ID, the failure cascades: the
+> **App Service Plan is created but the web app (`Microsoft.Web/sites`) is never deployed**.
+> This is a permissions issue, not a template bug. Fix it by redeploying with
+> `autoRegisterEntraApp=false` — the site then deploys with sign-in left unconfigured
+> (empty `ENTRA_CLIENT_ID`), and everything else (GeoCatalog, storage, managed identity,
+> Foundry) provisions normally. Wire sign-in later once you have an app registration (see below),
+> or ask an admin to grant you the role and rerun with auto-registration on.
+
 If you can't (or would rather use an existing app registration), turn auto-registration off and
 supply the IDs yourself — add your `https://<app>.azurewebsites.net/auth/callback` URL as a SPA
 redirect URI on that app first:
