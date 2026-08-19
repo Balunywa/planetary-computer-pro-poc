@@ -9,6 +9,19 @@ const TITLE = "Weather & Asset Risk Intelligence | Azure Accelerator";
 const DESC =
   "Join tropical forecasts to your offshore estate with explainable asset risk scoring, T-gate response posture and forecast uncertainty, deployable into your own Azure tenant.";
 
+// One-click ARM deployment into the visitor's own Azure subscription. Points at
+// the accelerator's azuredeploy.json + createUiDefinition.json on the default
+// branch; the portal renders the custom deployment wizard from them.
+const DEPLOY_TO_AZURE_URL =
+  "https://portal.azure.com/#create/Microsoft.Template/uri/" +
+  encodeURIComponent(
+    "https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure/azuredeploy.json",
+  ) +
+  "/createUIDefinitionUri/" +
+  encodeURIComponent(
+    "https://raw.githubusercontent.com/Balunywa/planetary-computer-pro-poc/main/deploy/azure/createUiDefinition.json",
+  );
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -55,9 +68,14 @@ function LandingPage() {
               >
                 Launch demo, no sign-in
               </Link>
-              <Link to="/auth" className="rounded-sm border px-5 py-2.5 text-sm hover:bg-accent">
-                Request deployment
-              </Link>
+              <a
+                href={DEPLOY_TO_AZURE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-sm border px-5 py-2.5 text-sm hover:bg-accent"
+              >
+                Deploy to Azure
+              </a>
             </div>
 
             <dl className="mt-9 grid gap-x-6 gap-y-5 border-t pt-6 sm:grid-cols-2">
@@ -168,6 +186,14 @@ function LandingPage() {
               <Link to="/demo" className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                 Launch demo
               </Link>
+              <a
+                href={DEPLOY_TO_AZURE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-sm border px-5 py-2.5 text-sm hover:bg-accent"
+              >
+                Deploy to Azure
+              </a>
               <Link to="/solution" className="rounded-sm border px-5 py-2.5 text-sm hover:bg-accent">
                 How the scoring works
               </Link>
