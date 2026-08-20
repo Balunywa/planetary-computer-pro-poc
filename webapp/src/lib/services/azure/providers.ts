@@ -27,8 +27,10 @@ import type {
   ThresholdService,
   WeatherService,
 } from "@/lib/services/interfaces";
+import { scoreAsset } from "@/lib/services/risk-engine";
 import {
   askFoundryCopilot,
+  listAuroraWeatherEvents,
   listStacLayers,
   listUploadedAssets,
   loadThresholdRules,
@@ -70,24 +72,30 @@ export class AzureAssetService implements AssetService {
   }
 }
 
-/** Forecasts from Aurora / ECMWF via Planetary Computer Pro. Empty until wired. */
+/** Forecasts normalized by the Aurora post-processing job and persisted in Blob Storage. */
 export class AzureWeatherService implements WeatherService {
   readonly providerLabel = "Aurora / ECMWF (Planetary Computer Pro)";
-  async listEvents(): Promise<WeatherEvent[]> {
-    return [];
+  listEvents(): Promise<WeatherEvent[]> {
+    return listAuroraWeatherEvents();
   }
-  async getEvent(): Promise<WeatherEvent | null> {
-    return null;
+  async getEvent(id: string): Promise<WeatherEvent | null> {
+    const events = await listAuroraWeatherEvents();
+    return events.find((event) => event.id === id) ?? null;
   }
 }
 
 /** Risk is computed from the tenant's real assets and forecasts; no assets → no risks. */
 export class AzureRiskEngineService implements RiskEngineService {
-  async scoreEstate(): Promise<AssetRisk[]> {
-    return [];
+  async scoreEstate(horizonHours = 120): Promise<AssetRisk[]> {
+    const [assets, events] = await Promise.all([listUploadedAssets(), listAuroraWeatherEvents()]);
+    const event = events[0];
+    return event ? assets.map((asset) => scoreAsset(asset, event, horizonHours)) : [];
   }
-  async scoreOne(): Promise<AssetRisk | null> {
-    return null;
+  async scoreOne(assetId: string, horizonHours = 120): Promise<AssetRisk | null> {
+    const [assets, events] = await Promise.all([listUploadedAssets(), listAuroraWeatherEvents()]);
+    const asset = assets.find((candidate) => candidate.id === assetId);
+    const event = events[0];
+    return asset && event ? scoreAsset(asset, event, horizonHours) : null;
   }
 }
 

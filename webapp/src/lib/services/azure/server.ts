@@ -12,6 +12,7 @@ import type {
   GeospatialLayer,
   OperatingStatus,
   ThresholdRule,
+  WeatherEvent,
 } from "@/lib/domain/types";
 
 // Data-plane audiences for Managed Identity tokens.
@@ -207,6 +208,62 @@ export const getDataPlaneStatus = createServerFn({ method: "GET" }).handler(
     auroraModelDeployed: process.env["AURORA_MODEL_DEPLOYED"] === "true",
     auroraAdapterConnected: false,
   }),
+);
+
+const WEATHER_EVENTS_BLOB_NAME = "weather-events.json";
+
+function isWeatherEvent(value: unknown): value is WeatherEvent {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Partial<WeatherEvent>;
+  return (
+    typeof event.id === "string" &&
+    typeof event.name === "string" &&
+    typeof event.lat === "number" &&
+    Number.isFinite(event.lat) &&
+    typeof event.lon === "number" &&
+    Number.isFinite(event.lon) &&
+    Array.isArray(event.history) &&
+    Array.isArray(event.forecast) &&
+    event.forecast.length > 0 &&
+    event.forecast.every(
+      (point) =>
+        typeof point?.hour === "number" &&
+        typeof point.lat === "number" &&
+        typeof point.lon === "number" &&
+        typeof point.windMph === "number" &&
+        typeof point.pressureMb === "number",
+    )
+  );
+}
+
+/** Load storm objects produced by the Aurora post-processing job. */
+export const listAuroraWeatherEvents = createServerFn({ method: "GET" }).handler(
+  async (): Promise<WeatherEvent[]> => {
+    const containerUrl = process.env["UPLOAD_CONTAINER_URL"];
+    if (!containerUrl) return [];
+    const token = await getManagedIdentityToken(STORAGE_RESOURCE);
+    if (!token) return [];
+    try {
+      const res = await fetch(`${containerUrl.replace(/\/$/, "")}/${WEATHER_EVENTS_BLOB_NAME}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-ms-version": "2021-08-06",
+        },
+      });
+      if (!res.ok) return [];
+      const payload = (await res.json()) as unknown;
+      const events = Array.isArray(payload)
+        ? payload
+        : payload &&
+            typeof payload === "object" &&
+            Array.isArray((payload as { events?: unknown }).events)
+          ? (payload as { events: unknown[] }).events
+          : [];
+      return events.filter(isWeatherEvent);
+    } catch {
+      return [];
+    }
+  },
 );
 
 export type UploadResult = { ok: boolean; message: string; blobUrl?: string };
