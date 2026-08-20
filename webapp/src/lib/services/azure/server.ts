@@ -352,11 +352,16 @@ function parseGeoJsonAssets(text: string): Asset[] {
   } catch {
     return [];
   }
-  const root = doc as { type?: string; features?: unknown[] };
+  const root = doc as { type?: string; features?: unknown[]; stac_version?: unknown };
+  // A STAC document (Item/Collection/Catalog) is GeoJSON-shaped but is imagery
+  // metadata, not an asset register — never ingest it as an asset.
+  if (root && "stac_version" in root) return [];
   const features: unknown[] =
     root?.type === "FeatureCollection" ? (root.features ?? []) : root?.type === "Feature" ? [doc] : [];
   const out: Asset[] = [];
   for (const raw of features) {
+    // Skip STAC items that may have been dropped into the same container.
+    if (raw && typeof raw === "object" && ("stac_version" in raw || "assets" in raw)) continue;
     const f = raw as { properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } };
     const p = f?.properties ?? {};
     const g = f?.geometry ?? {};
@@ -416,7 +421,11 @@ export const listUploadedAssets = createServerFn({ method: "GET" }).handler(
       if (!listRes.ok) return [];
       const xml = await listRes.text();
       const names = Array.from(xml.matchAll(/<Name>([^<]+)<\/Name>/g)).map((m) => m[1]!);
-      const dataFiles = names.filter((n) => /\.(csv|geojson|json)$/i.test(n));
+      const dataFiles = names.filter(
+        // Only asset files — skip the app-config blobs (e.g. threshold rules) that
+        // also live in this container.
+        (n) => /\.(csv|geojson|json)$/i.test(n) && !/(^|\/)app-config\./i.test(n),
+      );
       const byId = new Map<string, Asset>();
       for (const name of dataFiles) {
         const blobPath = name.split("/").map(encodeURIComponent).join("/");
