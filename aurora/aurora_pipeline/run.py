@@ -16,11 +16,10 @@ import logging
 import sys
 
 from .config import load_config
-from .inference import run_forecast
+from .inference import detect_seeds, run_and_track
 from .initial_conditions import build_initial_condition
 from .normalize import tracks_to_events
 from .publish import publish_events
-from .tracking import track_cyclones
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,13 +42,13 @@ def main() -> int:
     log.info("Building initial conditions…")
     initial_condition = build_initial_condition(config)
 
-    log.info("Submitting to Aurora endpoint %s…", config.endpoint)
-    fields = run_forecast(config, initial_condition)
-    log.info("Received %d predicted timesteps.", len(fields))
+    log.info("Detecting cyclones in the analysis…")
+    seeds = detect_seeds(config, initial_condition)
+    log.info("Seeded %d cyclone tracker(s).", len(seeds))
 
-    log.info("Tracking tropical cyclones in the detection domain…")
-    tracks = track_cyclones(config, fields)
-    log.info("Found %d qualifying track(s).", len(tracks))
+    log.info("Submitting to Aurora endpoint %s and tracking…", config.endpoint)
+    tracks = run_and_track(config, initial_condition, seeds)
+    log.info("Produced %d qualifying track(s).", len(tracks))
 
     events = tracks_to_events(config, tracks)
 

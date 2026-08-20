@@ -5,7 +5,18 @@ numpy>=1.26
 xarray>=2024.3
 netCDF4>=1.6
 
-# ERA5 initial conditions via the Copernicus Climate Data Store.
+# Aurora's own tropical-cyclone Tracker depends on these.
+scipy>=1.11
+pandas>=2.1
+
+# HRES T0 initial conditions from the public WeatherBench2 archive (no credentials),
+# plus Aurora's static variables from HuggingFace.
+fsspec>=2024.3
+gcsfs>=2024.3
+zarr>=2.17
+huggingface_hub>=0.23
+
+# ERA5 initial conditions via the Copernicus Climate Data Store (optional path).
 cdsapi>=0.7
 
 # HRES / GRIB initial conditions (operational path).

@@ -2,19 +2,22 @@
 
 Aurora needs a *history* of two consecutive 6-hourly states (t0-6h and t0) with
 surface variables, static variables, and five atmospheric variables on 13
-pressure levels. Two sources are supported:
+pressure levels. Three sources are supported:
 
-* ``era5`` — downloaded from the Copernicus CDS. This mirrors the official Aurora
-  quickstart exactly and yields all 13 levels, so it is the reference path.
-* ``hres`` — read from local ECMWF HRES GRIB files (operational path). GRIB
-  layouts vary by acquisition, so this loader is intentionally strict and fails
-  with a clear message when an expected field is absent.
+* ``hres_t0`` (default) — IFS HRES T0 pulled from the **public** WeatherBench2
+  archive on Google Cloud (no credentials) with static variables from Aurora's
+  HuggingFace repository (no credentials). This is the correct pairing for the
+  fine-tuned checkpoint and needs no Copernicus/ECMWF account.
+* ``era5`` — downloaded from the Copernicus CDS. Requires a (free) CDS account
+  and must be run against the *pretrained* checkpoint, per Aurora's guidance.
+* ``hres`` — read from local ECMWF HRES GRIB files (operational path).
 
 The returned batch is on CPU; the endpoint does the GPU work.
 """
 
 from __future__ import annotations
 
+import pickle
 import tempfile
 from datetime import timedelta
 from pathlib import Path
@@ -25,6 +28,21 @@ import xarray as xr
 from aurora import Batch, Metadata
 
 from .config import ATMOS_LEVELS, Config
+
+# WeatherBench2 (and CDS) long variable names for the four surface fields.
+_WB2_SURFACE = {
+    "2t": "2m_temperature",
+    "10u": "10m_u_component_of_wind",
+    "10v": "10m_v_component_of_wind",
+    "msl": "mean_sea_level_pressure",
+}
+_WB2_ATMOS = {
+    "t": "temperature",
+    "u": "u_component_of_wind",
+    "v": "v_component_of_wind",
+    "q": "specific_humidity",
+    "z": "geopotential",
+}
 
 # CDS variable names -> the short names xarray exposes in the downloaded NetCDF.
 _ERA5_SURFACE = {
@@ -48,9 +66,79 @@ _ERA5_ATMOS = {
 
 
 def build_initial_condition(config: Config) -> Batch:
+    if config.initial_condition_source == "hres_t0":
+        return _from_hres_t0_wb2(config)
     if config.initial_condition_source == "era5":
         return _from_era5(config)
     return _from_hres(config)
+
+
+# ---------------------------------------------------------------------------
+# HRES T0 via public WeatherBench2 + HuggingFace static — default, no credentials
+# ---------------------------------------------------------------------------
+
+
+def _from_hres_t0_wb2(config: Config) -> Batch:
+    import fsspec  # lazy: only the WB2 path needs gcsfs/fsspec
+
+    t0 = config.analysis_time.replace(tzinfo=None)
+    t_prev = t0 - timedelta(hours=6)
+
+    dataset = xr.open_zarr(fsspec.get_mapper(config.wb2_zarr_url), chunks=None)
+    try:
+        window = dataset.sel(time=[np.datetime64(t_prev), np.datetime64(t0)])
+    except KeyError as exc:  # noqa: BLE001 - surface a clear, actionable message
+        raise SystemExit(
+            f"WeatherBench2 archive {config.wb2_zarr_url} has no data for "
+            f"{t_prev}/{t0}. Set ANALYSIS_TIME within the archive's range or point "
+            "AURORA_WB2_ZARR_URL at a dataset that covers the requested time."
+        ) from exc
+
+    levels = tuple(int(level) for level in window["level"].values)
+    if set(ATMOS_LEVELS) - set(levels):
+        raise SystemExit(
+            f"WeatherBench2 archive is missing required pressure levels; "
+            f"needs {ATMOS_LEVELS}, has {levels}."
+        )
+
+    def surf(short: str) -> torch.Tensor:
+        # (time, lat, lon) -> (1, time, lat, lon), latitudes flipped to descending.
+        values = window[_WB2_SURFACE[short]].values
+        return torch.from_numpy(values[None][..., ::-1, :].copy().astype("float32"))
+
+    def atm(short: str) -> torch.Tensor:
+        # (time, level, lat, lon) -> (1, time, level, lat, lon), lat descending.
+        values = window[_WB2_ATMOS[short]].sel(level=list(ATMOS_LEVELS)).values
+        return torch.from_numpy(values[None][..., ::-1, :].copy().astype("float32"))
+
+    static_vars = _load_static_pickle(config)
+
+    return Batch(
+        surf_vars={name: surf(name) for name in _WB2_SURFACE},
+        static_vars=static_vars,
+        atmos_vars={name: atm(name) for name in _WB2_ATMOS},
+        metadata=Metadata(
+            lat=torch.from_numpy(window["latitude"].values[::-1].copy().astype("float32")),
+            lon=torch.from_numpy(window["longitude"].values.astype("float32")),
+            time=(t0,),
+            atmos_levels=ATMOS_LEVELS,
+        ),
+    )
+
+
+def _load_static_pickle(config: Config) -> dict:
+    """Aurora's static variables (z, lsm, slt), pre-regridded, from HuggingFace."""
+    from huggingface_hub import hf_hub_download
+
+    path = hf_hub_download(repo_id=config.static_repo, filename=config.static_name)
+    with open(path, "rb") as handle:
+        raw = pickle.load(handle)
+    missing = {"z", "lsm", "slt"} - set(raw)
+    if missing:
+        raise SystemExit(
+            f"Static pickle {config.static_name} is missing variables {missing}."
+        )
+    return {key: torch.from_numpy(np.asarray(value)) for key, value in raw.items()}
 
 
 # ---------------------------------------------------------------------------

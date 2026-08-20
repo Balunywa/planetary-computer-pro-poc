@@ -8,9 +8,12 @@ with an actionable message rather than deep in an Azure SDK call.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+log = logging.getLogger("aurora_pipeline")
 
 # Aurora's fine-tuned 0.25-degree model expects these 13 pressure levels, in hPa.
 ATMOS_LEVELS: tuple[int, ...] = (
@@ -19,6 +22,20 @@ ATMOS_LEVELS: tuple[int, ...] = (
 
 # Most recent synoptic hours that ECMWF produces analyses/forecasts for.
 SYNOPTIC_HOURS: tuple[int, ...] = (0, 6, 12, 18)
+
+# Public WeatherBench2 archive of IFS HRES T0 at 0.25 degrees (no credentials).
+DEFAULT_WB2_ZARR = "gs://weatherbench2/datasets/hres_t0/2016-2022-6h-1440x721.zarr"
+# Aurora's own static variables, hosted on HuggingFace (no credentials).
+DEFAULT_STATIC_REPO = "microsoft/aurora"
+DEFAULT_STATIC_NAME = "aurora-0.25-static.pickle"
+
+# Which checkpoint each initial-condition source is valid for. The fine-tuned
+# model is only accurate on IFS HRES T0; ERA5 must use the pretrained model.
+_MODEL_FOR_SOURCE = {
+    "hres_t0": "aurora-0.25-finetuned",
+    "hres": "aurora-0.25-finetuned",
+    "era5": "aurora-0.25-pretrained",
+}
 
 
 @dataclass(frozen=True)
@@ -43,10 +60,18 @@ class Config:
     endpoint_token: str
     model_name: str
     num_steps: int
-    blob_channel_url: str
+
+    # Blob channel the endpoint uses for scratch. Either an explicit read/write
+    # SAS URL, or an account URL + container to mint a user-delegation SAS from.
+    blob_channel_url: str | None
+    blob_account_url: str | None
+    blob_container: str | None
 
     initial_condition_source: str
     hres_input_dir: str | None
+    wb2_zarr_url: str
+    static_repo: str
+    static_name: str
     analysis_time: datetime
 
     detection_bbox: BBox
@@ -105,9 +130,12 @@ def _parse_analysis_time(raw: str) -> datetime:
 
 
 def load_config() -> Config:
-    source = os.environ.get("INITIAL_CONDITION_SOURCE", "era5").strip().lower()
-    if source not in {"era5", "hres"}:
-        raise SystemExit("INITIAL_CONDITION_SOURCE must be 'era5' or 'hres'.")
+    source = os.environ.get("INITIAL_CONDITION_SOURCE", "hres_t0").strip().lower()
+    if source not in _MODEL_FOR_SOURCE:
+        raise SystemExit(
+            "INITIAL_CONDITION_SOURCE must be 'hres_t0' (default, public "
+            "WeatherBench2), 'hres' (local GRIB), or 'era5' (Copernicus CDS)."
+        )
 
     hres_dir = os.environ.get("HRES_INPUT_DIR", "").strip() or None
     if source == "hres" and not hres_dir:
@@ -122,19 +150,46 @@ def load_config() -> Config:
     if num_steps < 1 or num_steps > 60:
         raise SystemExit("AURORA_NUM_STEPS must be between 1 and 60.")
 
+    # Default the checkpoint to the one valid for the chosen source; warn loudly
+    # if the operator forces the fine-tuned model onto ERA5 (or vice versa).
+    model_name = os.environ.get("AURORA_MODEL_NAME", "").strip() or _MODEL_FOR_SOURCE[source]
+    if model_name != _MODEL_FOR_SOURCE[source]:
+        log.warning(
+            "AURORA_MODEL_NAME=%s is not the recommended checkpoint for source '%s' "
+            "(expected %s); predictions may be degraded.",
+            model_name, source, _MODEL_FOR_SOURCE[source],
+        )
+
     output_container = os.environ.get("OUTPUT_CONTAINER_URL", "").strip() or None
     output_sas = os.environ.get("OUTPUT_SAS_URL", "").strip() or None
     if not output_container and not output_sas:
         raise SystemExit("Set OUTPUT_CONTAINER_URL (managed identity) or OUTPUT_SAS_URL.")
 
+    # The endpoint needs a read/write blob channel. Accept either an explicit SAS
+    # URL or an account URL + container from which we mint a short-lived
+    # user-delegation SAS using the job's managed identity.
+    blob_channel_url = os.environ.get("AURORA_BLOB_CHANNEL_URL", "").strip() or None
+    blob_account_url = os.environ.get("AURORA_BLOB_ACCOUNT_URL", "").strip() or None
+    blob_container = os.environ.get("AURORA_BLOB_CONTAINER", "").strip() or None
+    if not blob_channel_url and not (blob_account_url and blob_container):
+        raise SystemExit(
+            "Set AURORA_BLOB_CHANNEL_URL (read/write SAS), or "
+            "AURORA_BLOB_ACCOUNT_URL + AURORA_BLOB_CONTAINER to mint one automatically."
+        )
+
     return Config(
         endpoint=_require("AURORA_ENDPOINT"),
         endpoint_token=_require("AURORA_ENDPOINT_TOKEN"),
-        model_name=os.environ.get("AURORA_MODEL_NAME", "aurora-0.25-finetuned").strip(),
+        model_name=model_name,
         num_steps=num_steps,
-        blob_channel_url=_require("AURORA_BLOB_CHANNEL_URL"),
+        blob_channel_url=blob_channel_url,
+        blob_account_url=blob_account_url,
+        blob_container=blob_container,
         initial_condition_source=source,
         hres_input_dir=hres_dir,
+        wb2_zarr_url=os.environ.get("AURORA_WB2_ZARR_URL", "").strip() or DEFAULT_WB2_ZARR,
+        static_repo=os.environ.get("AURORA_STATIC_REPO", "").strip() or DEFAULT_STATIC_REPO,
+        static_name=os.environ.get("AURORA_STATIC_NAME", "").strip() or DEFAULT_STATIC_NAME,
         analysis_time=analysis_time,
         detection_bbox=_parse_bbox(os.environ.get("DETECTION_BBOX", "-100,15,-70,35")),
         output_container_url=output_container,
