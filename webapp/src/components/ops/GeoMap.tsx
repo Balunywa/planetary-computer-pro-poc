@@ -4,6 +4,20 @@ import type { Map as MlMap } from "maplibre-gl";
 import { Crosshair, Minus, Plus } from "lucide-react";
 import type { Feature, FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
+// MapLibre 6 derives its worker URL at runtime via `new URL(`./${name}`,
+// import.meta.url)`. That expression is not statically analysable, so the
+// production (Rolldown) bundle never emits `maplibre-gl-worker.mjs` — the
+// browser requests `/assets/maplibre-gl-worker.mjs`, the server 404s/redirects,
+// the worker boots empty, and every GeoJSON source silently stalls (raster
+// tiles still render because they decode on the main thread). Importing the
+// worker through Vite's `?worker&url` transform emits it as a real, hashed
+// worker chunk (with its `maplibre-gl-shared.mjs` dependency bundled in) and
+// hands us a stable URL that works in both dev and the production build.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+
+if (typeof Worker !== "undefined") {
+  maplibregl.setWorkerUrl(maplibreWorkerUrl);
+}
 
 import type {
   Asset,
@@ -245,16 +259,30 @@ export default function GeoMap({
     if (!event) {
       return { forecast: empty(), history: empty(), cone: empty(), points: empty() };
     }
-    const forecastLine = feature({
-      type: "LineString",
-      coordinates: event.forecast.map((p) => [p.lon, p.lat]),
-    });
-    const historyLine = feature({ type: "LineString", coordinates: event.history });
-    const cone = feature(
-      conePolygon(
-        event.forecast.map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi })),
-      ),
+    // A LineString needs >= 2 positions; fewer produces invalid GeoJSON that
+    // stalls MapLibre's worker and blanks every vector layer. Emit empty instead.
+    const forecastCoords = event.forecast.map((p) => [p.lon, p.lat]);
+    const forecastFeatures: Feature[] =
+      forecastCoords.length >= 2
+        ? [feature({ type: "LineString", coordinates: forecastCoords }) as Feature]
+        : [];
+    const historyCoords = (event.history ?? []).filter(
+      (c) => Array.isArray(c) && c.length === 2,
     );
+    const historyFeatures: Feature[] =
+      historyCoords.length >= 2
+        ? [feature({ type: "LineString", coordinates: historyCoords }) as Feature]
+        : [];
+    const coneFeatures: Feature[] =
+      event.forecast.length >= 2
+        ? [
+            feature(
+              conePolygon(
+                event.forecast.map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi })),
+              ),
+            ) as Feature,
+          ]
+        : [];
     const points = event.forecast.map((p) =>
       feature(
         { type: "Point", coordinates: [p.lon, p.lat] },
@@ -266,9 +294,9 @@ export default function GeoMap({
       ),
     );
     return {
-      forecast: { type: "FeatureCollection", features: [forecastLine] } as FeatureCollection,
-      history: { type: "FeatureCollection", features: [historyLine] } as FeatureCollection,
-      cone: { type: "FeatureCollection", features: [cone] } as FeatureCollection,
+      forecast: { type: "FeatureCollection", features: forecastFeatures } as FeatureCollection,
+      history: { type: "FeatureCollection", features: historyFeatures } as FeatureCollection,
+      cone: { type: "FeatureCollection", features: coneFeatures } as FeatureCollection,
       points: { type: "FeatureCollection", features: points as Feature[] } as FeatureCollection,
     };
   }, [event]);

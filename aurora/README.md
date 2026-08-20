@@ -6,13 +6,16 @@ only produces atmospheric fields — it does not, on its own, populate the weath
 map. This pipeline is the missing production business logic that connects the two:
 
 ```
-ERA5 / HRES initial conditions
+HRES T0 initial conditions  (public WeatherBench2 + HuggingFace static — no creds)
         │  (Batch: surface + 13 pressure levels + static)
         ▼
-Aurora online endpoint  ──(FoundryClient + BlobStorageChannel)──►  predicted Batches
-        │  (msl, 10u, 10v, t, z … on a lat/lon grid, every 6 h)
+Genesis detection  (MSL minima + 10 m wind maxima in the analysis → storm seeds)
+        │
         ▼
-Tropical-cyclone tracker  (MSL minima + 10 m wind maxima, linked across lead times)
+Aurora online endpoint  ──(FoundryClient + BlobStorageChannel)──►  predicted Batches
+        │  (msl, 10u, 10v, z@700 … on a lat/lon grid, every 6 h)
+        ▼
+aurora.Tracker  (Microsoft's own Nature-paper tracker, one per seed, stepped over the rollout)
         │
         ▼
 Normalizer  ──►  WeatherEvent[]   (exact webapp/src/lib/domain/types.ts schema)
@@ -30,26 +33,50 @@ to a live, populated weather map.
 
 - It **is** a real, runnable pipeline that calls the deployed Aurora endpoint and
   writes the domain objects the app consumes.
+- Cyclone propagation uses **`aurora.Tracker`** — Microsoft's own tracker from the
+  Aurora Nature paper — not a home-grown heuristic. The only bespoke step is
+  *genesis detection* (finding which storms exist in the analysis), because the
+  official tracker only propagates a storm you already located.
 - It does **not** invent weather. When no tropical cyclone is present in the
-  forecast domain, it publishes an empty event list — the map stays honestly empty.
-- Aurora emits atmospheric state; the cyclone detection/tracking here is a
-  pragmatic MSL-minimum + wind-maximum tracker, not an operational agency tracker.
-  Treat its output as decision-support, not an official advisory.
+  analysis, no endpoint call is made and an empty event list is published — the
+  map stays honestly empty.
 
 ## Prerequisites
 
 - Python 3.11+
 - Access to the deployed Aurora endpoint (scoring URI + token).
 - A blob container the endpoint can use as its transfer **channel** (Aurora
-  passes large tensors via blob storage, not the HTTP body). A short-lived
-  read/write SAS URL for that container is required.
-- Initial conditions. Two supported sources:
-  - **ERA5** via the Copernicus CDS API (`cdsapi`) — the reference path used by
-    the official Aurora examples. Requires free CDS credentials in `~/.cdsapirc`.
-  - **HRES T0** GRIB files you already have on disk (operational path).
+  passes large tensors via blob storage, not the HTTP body). Either provide a
+  read/write SAS URL (`AURORA_BLOB_CHANNEL_URL`), or set
+  `AURORA_BLOB_ACCOUNT_URL` + `AURORA_BLOB_CONTAINER` and let the job mint a
+  short-lived user-delegation SAS with its managed identity.
+- Initial conditions. Three supported sources:
+  - **`hres_t0`** (default) — IFS HRES T0 from the **public** WeatherBench2 archive
+    plus Aurora's static variables from HuggingFace. **No Copernicus/ECMWF
+    account.** The public archive is historical (2016-2022 by default), so set
+    `ANALYSIS_TIME` to a date in range (real-time needs a live IFS feed).
+  - **`era5`** via the Copernicus CDS API — reference path; runs the *pretrained*
+    checkpoint. Requires free CDS credentials in `~/.cdsapirc`.
+  - **`hres`** — local ECMWF HRES GRIB files (operational path).
 - Write access to the `model-outputs` container to publish the result. On Azure
   this uses the job's managed identity via `DefaultAzureCredential`; locally set
   `OUTPUT_SAS_URL` instead.
+
+## Why any of this is needed (and what is automated)
+
+A forecast is `future = model(present state)`. Two things can never be produced
+by code alone and are the only real inputs you must supply:
+
+1. **A present atmospheric state** (the initial condition). The default source
+   removes the credential burden by reading the public WeatherBench2 archive and
+   Aurora's HuggingFace static file — no accounts. A *real-time* state still needs
+   a live IFS feed, which is a licensing decision, not a code one.
+2. **A trigger** to run each cycle. The GPU inference already runs on your
+   deployed endpoint; the pipeline itself is a light CPU job. Schedule it once
+   (see below) and it is hands-off thereafter.
+
+Everything else — the blob channel SAS, checkpoint selection, tracking, and
+publishing — is automated here.
 
 ## Configure
 
@@ -72,18 +99,39 @@ pip install -r requirements.txt
 python -m aurora_pipeline.run
 ```
 
-This fetches initial conditions, runs the endpoint, tracks cyclones, and writes
-`weather-events.json` to the output container. Schedule it (Azure Container Apps
-job, ACI, or an AML pipeline) on the ECMWF cycle cadence (00/06/12/18 UTC).
+This builds initial conditions, detects storms, runs the endpoint with
+`aurora.Tracker`, and writes `weather-events.json` to the output container.
+
+## Schedule it (no manual runs)
+
+Build the container and run it as an Azure Container Apps **Job** on the ECMWF
+cycle cadence (00/06/12/18 UTC). A ready-to-deploy module is in
+`deploy/azure/aurora-job.bicep`:
+
+```bash
+# Build & push the image (uses the Dockerfile in this folder).
+az acr build -r <your-registry> -t aurora-pipeline:latest aurora
+
+# Deploy the scheduled job (managed identity, cron trigger).
+az deployment group create -g pcpro-poc-rg \
+  -f deploy/azure/aurora-job.bicep \
+  -p image=<your-registry>.azurecr.io/aurora-pipeline:latest \
+     auroraEndpoint=$AURORA_ENDPOINT
+```
+
+Grant the job's managed identity **Storage Blob Data Contributor** on the storage
+account (for both the scratch channel and `model-outputs`) and **AzureML Data
+Scientist** on the workspace, exactly like the web app's identity.
 
 ## Layout
 
 | Module | Responsibility |
 | --- | --- |
-| `config.py` | Environment-driven configuration and validation |
-| `initial_conditions.py` | Build an `aurora.Batch` from ERA5 (CDS) or HRES GRIB |
-| `inference.py` | Call the Aurora endpoint via the Foundry client + blob channel |
-| `tracking.py` | Detect and track tropical cyclones in the predicted grids |
+| `config.py` | Environment-driven configuration, checkpoint/source pairing, validation |
+| `initial_conditions.py` | Build an `aurora.Batch` from WeatherBench2 HRES T0, ERA5 (CDS), or HRES GRIB |
+| `blob_sas.py` | Mint a short-lived read/write channel SAS from the managed identity |
+| `inference.py` | Detect storm seeds, call the endpoint, propagate with `aurora.Tracker` |
+| `tracking.py` | Genesis detection (MSL minima + wind maxima) that seeds the tracker |
 | `normalize.py` | Convert tracks to the app's `WeatherEvent` schema |
 | `publish.py` | Write `weather-events.json` to the output container |
 | `run.py` | Orchestrate the end-to-end cycle |
