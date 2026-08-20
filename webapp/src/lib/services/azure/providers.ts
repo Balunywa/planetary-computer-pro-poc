@@ -30,6 +30,7 @@ import type {
 import {
   askFoundryCopilot,
   listStacLayers,
+  listUploadedAssets,
   loadThresholdRules,
   saveThresholdRules,
 } from "@/lib/services/azure/server";
@@ -61,10 +62,11 @@ export class AzureCopilotService implements CopilotService {
  */
 export class AzureAssetService implements AssetService {
   async listAssets(): Promise<Asset[]> {
-    return [];
+    return listUploadedAssets();
   }
-  async getAsset(): Promise<Asset | null> {
-    return null;
+  async getAsset(id: string): Promise<Asset | null> {
+    const all = await listUploadedAssets();
+    return all.find((a) => a.id === id) ?? null;
   }
 }
 

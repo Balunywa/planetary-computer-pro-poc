@@ -5,7 +5,14 @@
 
 import { createServerFn } from "@tanstack/react-start";
 
-import type { CopilotAnswer, GeospatialLayer, ThresholdRule } from "@/lib/domain/types";
+import type {
+  Asset,
+  AssetType,
+  CopilotAnswer,
+  GeospatialLayer,
+  OperatingStatus,
+  ThresholdRule,
+} from "@/lib/domain/types";
 
 // Data-plane audiences for Managed Identity tokens.
 const GEOCATALOG_RESOURCE = "https://geocatalog.spatio.azure.com";
@@ -226,6 +233,205 @@ export const uploadAsset = createServerFn({ method: "POST" })
       return { ok: false, message: "Upload failed: could not reach the storage account." };
     }
   });
+
+// ---------------------------------------------------------------------------
+// Asset-register ingestion: read the CSV / GeoJSON files an operator uploaded to
+// the sample-assets container and parse them into the domain Asset shape, so the
+// map, risk engine and tables populate from the operator's OWN data. Returns []
+// when storage is unwired or empty — never synthetic assets.
+// ---------------------------------------------------------------------------
+
+const ASSET_TYPES = new Set<AssetType>([
+  "offshore_platform",
+  "pipeline",
+  "well",
+  "refinery",
+  "lng_terminal",
+  "storage",
+  "port",
+]);
+const OPERATING_STATUSES = new Set<OperatingStatus>([
+  "producing",
+  "reduced",
+  "shut_in",
+  "evacuating",
+  "standby",
+]);
+
+function normalizeType(v: string): AssetType {
+  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "platform") return "offshore_platform";
+  return ASSET_TYPES.has(s as AssetType) ? (s as AssetType) : "well";
+}
+function normalizeStatus(v: string): OperatingStatus {
+  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return OPERATING_STATUSES.has(s as OperatingStatus) ? (s as OperatingStatus) : "producing";
+}
+function normalizeCriticality(v: string): Asset["criticality"] {
+  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return s === "business_critical" || s === "important" ? s : "standard";
+}
+
+/** Minimal RFC-4180-style CSV line splitter (handles double-quoted fields). */
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quoted) {
+      if (c === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else quoted = false;
+      } else cur += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") {
+      out.push(cur);
+      cur = "";
+    } else cur += c;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
+function parseCsvAssets(text: string): Asset[] {
+  const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return [];
+  const header = splitCsvLine(lines[0]!).map((h) => h.toLowerCase());
+  const pick = (row: string[], ...names: string[]): string => {
+    for (const n of names) {
+      const i = header.indexOf(n);
+      if (i >= 0 && row[i] !== undefined && row[i] !== "") return row[i]!;
+    }
+    return "";
+  };
+  const out: Asset[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = splitCsvLine(lines[i]!);
+    const id = pick(row, "id");
+    const lat = Number(pick(row, "latitude", "lat"));
+    const lon = Number(pick(row, "longitude", "lon", "long"));
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    out.push({
+      id,
+      name: pick(row, "name") || id,
+      type: normalizeType(pick(row, "type")),
+      lat,
+      lon,
+      operator: pick(row, "operator"),
+      region: pick(row, "region"),
+      businessUnit: pick(row, "business_unit", "businessunit"),
+      status: normalizeStatus(pick(row, "operating_status", "status")),
+      criticality: normalizeCriticality(pick(row, "criticality")),
+      metadata: {},
+    });
+  }
+  return out;
+}
+
+function centroid(ring: number[][]): [number, number] {
+  let x = 0;
+  let y = 0;
+  let n = 0;
+  for (const p of ring) {
+    if (Array.isArray(p) && p.length >= 2) {
+      x += Number(p[0]);
+      y += Number(p[1]);
+      n++;
+    }
+  }
+  return n ? [x / n, y / n] : [NaN, NaN];
+}
+
+function parseGeoJsonAssets(text: string): Asset[] {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const root = doc as { type?: string; features?: unknown[] };
+  const features: unknown[] =
+    root?.type === "FeatureCollection" ? (root.features ?? []) : root?.type === "Feature" ? [doc] : [];
+  const out: Asset[] = [];
+  for (const raw of features) {
+    const f = raw as { properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } };
+    const p = f?.properties ?? {};
+    const g = f?.geometry ?? {};
+    const id = String(p["id"] ?? "").trim();
+    if (!id) continue;
+    let lat = NaN;
+    let lon = NaN;
+    let geometry: Array<[number, number]> | undefined;
+    if (g.type === "Point" && Array.isArray(g.coordinates)) {
+      lon = Number((g.coordinates as number[])[0]);
+      lat = Number((g.coordinates as number[])[1]);
+    } else if (g.type === "LineString" && Array.isArray(g.coordinates)) {
+      geometry = g.coordinates as Array<[number, number]>;
+      [lon, lat] = centroid(g.coordinates as number[][]);
+    } else if (g.type === "Polygon" && Array.isArray(g.coordinates)) {
+      [lon, lat] = centroid(((g.coordinates as number[][][])[0] ?? []) as number[][]);
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const type = normalizeType(String(p["type"] ?? ""));
+    const asset: Asset = {
+      id,
+      name: String(p["name"] ?? id),
+      type,
+      lat,
+      lon,
+      operator: String(p["operator"] ?? ""),
+      region: String(p["region"] ?? ""),
+      businessUnit: String(p["business_unit"] ?? p["businessUnit"] ?? ""),
+      status: normalizeStatus(String(p["operating_status"] ?? p["status"] ?? "")),
+      criticality: normalizeCriticality(String(p["criticality"] ?? "")),
+      metadata:
+        p["metadata"] && typeof p["metadata"] === "object"
+          ? (p["metadata"] as Record<string, string | number>)
+          : {},
+    };
+    if (geometry && type === "pipeline") asset.geometry = geometry;
+    out.push(asset);
+  }
+  return out;
+}
+
+/**
+ * List every CSV / GeoJSON the operator uploaded to the sample-assets container
+ * and parse them into the domain Asset shape. This is what turns an upload into a
+ * populated map + risk score. Later files (and later rows) win on duplicate id.
+ */
+export const listUploadedAssets = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Asset[]> => {
+    const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
+    if (!containerUrl) return [];
+    const token = await getManagedIdentityToken(STORAGE_RESOURCE);
+    if (!token) return [];
+    const base = containerUrl.replace(/\/$/, "");
+    const authHeaders = { Authorization: `Bearer ${token}`, "x-ms-version": "2021-08-06" };
+    try {
+      const listRes = await fetch(`${base}?restype=container&comp=list`, { headers: authHeaders });
+      if (!listRes.ok) return [];
+      const xml = await listRes.text();
+      const names = Array.from(xml.matchAll(/<Name>([^<]+)<\/Name>/g)).map((m) => m[1]!);
+      const dataFiles = names.filter((n) => /\.(csv|geojson|json)$/i.test(n));
+      const byId = new Map<string, Asset>();
+      for (const name of dataFiles) {
+        const blobPath = name.split("/").map(encodeURIComponent).join("/");
+        const res = await fetch(`${base}/${blobPath}`, { headers: authHeaders });
+        if (!res.ok) continue;
+        const body = await res.text();
+        const parsed = /\.csv$/i.test(name) ? parseCsvAssets(body) : parseGeoJsonAssets(body);
+        for (const a of parsed) byId.set(a.id, a);
+      }
+      return Array.from(byId.values());
+    } catch {
+      return [];
+    }
+  },
+);
 
 export type SeedResult = { ok: boolean; message: string; collectionId?: string; ingested?: number };
 
