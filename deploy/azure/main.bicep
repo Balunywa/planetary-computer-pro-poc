@@ -135,6 +135,7 @@ var amlKeyVaultName = 'pcpro-kv-${amlSuffix}'
 var amlApplicationInsightsName = 'pcpro-ai-${amlSuffix}'
 var auroraEndpointName = 'aurora-${amlSuffix}'
 var auroraDeploymentName = 'aurora'
+var azureMLDataScientistRoleId = 'f6c7c914-8db3-469d-8ca1-694a8f32e121'
 // The GPU model deployment only runs when a model asset ID is supplied (it needs GPU
 // quota + accepted marketplace terms); otherwise just the workspace + endpoint deploy.
 var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
@@ -364,7 +365,17 @@ resource auroraEndpoint 'Microsoft.MachineLearningServices/workspaces/onlineEndp
     type: 'SystemAssigned'
   }
   properties: {
-    authMode: 'Key'
+    authMode: 'AADToken'
+  }
+}
+
+resource auroraWebAppRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAuroraModel && deployWebApp) {
+  name: guid(amlWorkspace.id, webAppName, azureMLDataScientistRoleId)
+  scope: amlWorkspace
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureMLDataScientistRoleId)
+    principalId: deployWebApp ? webApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -483,6 +494,10 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
         {
           name: 'AURORA_ENDPOINT'
           value: deployAuroraModel ? auroraEndpoint.properties.scoringUri : ''
+        }
+        {
+          name: 'AURORA_MODEL_DEPLOYED'
+          value: string(deployAuroraDeployment)
         }
         {
           name: 'SAMPLE_CONTAINER_URL'

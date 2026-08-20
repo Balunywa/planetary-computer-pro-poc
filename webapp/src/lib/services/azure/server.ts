@@ -190,6 +190,12 @@ export type DataPlaneStatus = {
   geoCatalogConfigured: boolean;
   /** Sample-data storage container is wired for uploads. */
   uploadConfigured: boolean;
+  /** An Azure ML Aurora scoring endpoint was supplied by the deployment template. */
+  auroraEndpointConfigured: boolean;
+  /** The deployment template created an Aurora model deployment on the endpoint. */
+  auroraModelDeployed: boolean;
+  /** The server-side Aurora response-to-WeatherEvent adapter is implemented. */
+  auroraAdapterConnected: boolean;
 };
 
 /** Report which onboarding capabilities the current deployment has wired. */
@@ -197,6 +203,9 @@ export const getDataPlaneStatus = createServerFn({ method: "GET" }).handler(
   async (): Promise<DataPlaneStatus> => ({
     geoCatalogConfigured: Boolean(process.env["GEOCATALOG_URI"]),
     uploadConfigured: Boolean(process.env["SAMPLE_CONTAINER_URL"]),
+    auroraEndpointConfigured: Boolean(process.env["AURORA_ENDPOINT"]),
+    auroraModelDeployed: process.env["AURORA_MODEL_DEPLOYED"] === "true",
+    auroraAdapterConnected: false,
   }),
 );
 

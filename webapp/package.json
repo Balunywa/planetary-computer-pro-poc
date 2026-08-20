@@ -10,7 +10,9 @@
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:sample": "VITE_USE_SAMPLE_DATA=true vite build --outDir dist-sample",
     "preview": "vite preview",
+    "preview:sample": "DIST_DIR=dist-sample PORT=4174 node server.mjs",
     "start": "node server.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."

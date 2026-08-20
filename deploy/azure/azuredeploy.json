@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "6249318862313893681"
+      "templateHash": "10391898500307840860"
     }
   },
   "parameters": {
@@ -172,6 +172,7 @@
     "amlApplicationInsightsName": "[format('pcpro-ai-{0}', variables('amlSuffix'))]",
     "auroraEndpointName": "[format('aurora-{0}', variables('amlSuffix'))]",
     "auroraDeploymentName": "aurora",
+    "azureMLDataScientistRoleId": "f6c7c914-8db3-469d-8ca1-694a8f32e121",
     "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]"
   },
   "imports": {
@@ -439,10 +440,26 @@
         "type": "SystemAssigned"
       },
       "properties": {
-        "authMode": "Key"
+        "authMode": "AADToken"
       },
       "dependsOn": [
         "amlWorkspace"
+      ]
+    },
+    "auroraWebAppRole": {
+      "condition": "[and(parameters('deployAuroraModel'), parameters('deployWebApp'))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.MachineLearningServices/workspaces', variables('amlWorkspaceName'))]",
+      "name": "[guid(resourceId('Microsoft.MachineLearningServices/workspaces', variables('amlWorkspaceName')), variables('webAppName'), variables('azureMLDataScientistRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('azureMLDataScientistRoleId'))]",
+        "principalId": "[if(parameters('deployWebApp'), reference('webApp', '2023-12-01', 'full').identity.principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "amlWorkspace",
+        "webApp"
       ]
     },
     "auroraDeployment": {
@@ -562,6 +579,10 @@
             {
               "name": "AURORA_ENDPOINT",
               "value": "[if(parameters('deployAuroraModel'), reference('auroraEndpoint').scoringUri, '')]"
+            },
+            {
+              "name": "AURORA_MODEL_DEPLOYED",
+              "value": "[string(variables('deployAuroraDeployment'))]"
             },
             {
               "name": "SAMPLE_CONTAINER_URL",

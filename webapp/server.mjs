@@ -12,9 +12,10 @@
 import { join } from "node:path";
 import { serve } from "srvx";
 import { serveStatic } from "srvx/static";
-import ssr from "./dist/server/server.js";
 
-const clientDir = join(import.meta.dirname, "dist", "client");
+const distDir = process.env.DIST_DIR || "dist";
+const { default: ssr } = await import(`./${distDir}/server/server.js`);
+const clientDir = join(import.meta.dirname, distDir, "client");
 const port = Number(process.env.PORT) || 3000;
 
 serve({

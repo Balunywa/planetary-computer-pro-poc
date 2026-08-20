@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, Check, Database, ExternalLink, Shield, Sparkles } from "lucide-react";
+import { Boxes, Check, CloudSun, Database, ExternalLink, Shield, Sparkles } from "lucide-react";
 
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
@@ -46,8 +46,17 @@ export function DeploymentPage() {
   const geoCatalogWired = Boolean(cfg.geoCatalogUrl);
   const foundryWired = Boolean(cfg.foundryEndpoint);
   const uploadWired = status.data?.uploadConfigured ?? false;
+  const auroraEndpointWired = status.data?.auroraEndpointConfigured ?? false;
+  const auroraModelDeployed = status.data?.auroraModelDeployed ?? false;
+  const auroraAdapterConnected = status.data?.auroraAdapterConnected ?? false;
 
-  const services: { name: string; detail: string; wired: boolean; endpoint?: string }[] = [
+  const services: {
+    name: string;
+    detail: string;
+    wired: boolean;
+    endpoint?: string;
+    statusLabel?: string;
+  }[] = [
     {
       name: "Geospatial catalog (Planetary Computer Pro)",
       detail: "STAC collections and imagery for the operating region",
@@ -66,6 +75,20 @@ export function DeploymentPage() {
       name: "Data storage & upload",
       detail: "Blob container for uploaded assets and catalog ingestion sources",
       wired: uploadWired,
+    },
+    {
+      name: "Aurora weather inference",
+      detail: !auroraEndpointWired
+        ? "Select Aurora and provide its model asset ID in the Azure deployment form"
+        : !auroraModelDeployed
+          ? "Azure ML endpoint provisioned; GPU model deployment still required"
+          : "Aurora model deployed; WeatherEvent response adapter still required",
+      wired: auroraModelDeployed && auroraAdapterConnected,
+      statusLabel: !auroraEndpointWired
+        ? "Not configured"
+        : auroraModelDeployed
+          ? "Adapter required"
+          : "Model required",
     },
   ];
 
@@ -106,7 +129,7 @@ export function DeploymentPage() {
                     <span
                       className={`size-1.5 rounded-full ${s.wired ? "bg-risk-normal" : "bg-muted-foreground/50"}`}
                     />
-                    {s.wired ? "Connected" : "Not configured"}
+                    {s.statusLabel ?? (s.wired ? "Connected" : "Not configured")}
                   </span>
                 </li>
               ))}
@@ -149,6 +172,24 @@ export function DeploymentPage() {
               result until the corresponding data is ingested — the app never falls back to
               synthetic sample data.
             </p>
+          </div>
+
+          <div className="panel p-4">
+            <div className="label-xs mb-2 flex items-center gap-1.5">
+              <CloudSun className="size-3.5 text-primary" /> Aurora configuration
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Configure Aurora in the Azure deployment form, not in this browser. Select the Aurora
+              component, choose the GPU instance type, and provide the model asset ID. Bicep derives
+              the scoring URI and stores it as a server-only app setting. No endpoint token or key
+              is sent to the browser.
+            </p>
+            <div className="mt-2 rounded-sm border bg-card px-3 py-2 text-[10px] text-muted-foreground">
+              Model asset example:{" "}
+              <code className="text-foreground">
+                azureml://registries/azureml/models/Aurora/versions/4
+              </code>
+            </div>
           </div>
         </div>
 

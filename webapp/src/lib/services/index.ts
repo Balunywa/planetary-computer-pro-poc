@@ -17,6 +17,16 @@ import {
   AzureThresholdService,
   AzureWeatherService,
 } from "@/lib/services/azure/providers";
+import {
+  MockAlertService,
+  MockAssetService,
+  MockCopilotService,
+  MockPlanetaryComputerService,
+  MockPostureService,
+  MockRiskEngineService,
+  MockThresholdService,
+  MockWeatherService,
+} from "@/lib/services/mock-providers";
 
 /** Tenant (/app) providers — real Azure services; empty/honest until data is ingested. */
 export const tenantServices: PlatformServices = {
@@ -30,9 +40,20 @@ export const tenantServices: PlatformServices = {
   copilot: new AzureCopilotService(),
 };
 
+const sampleServices: PlatformServices = {
+  assets: new MockAssetService(),
+  weather: new MockWeatherService(),
+  risk: new MockRiskEngineService(),
+  alerts: new MockAlertService(),
+  posture: new MockPostureService(),
+  thresholds: new MockThresholdService(),
+  geospatial: new MockPlanetaryComputerService(),
+  copilot: new MockCopilotService(),
+};
+
 /** Pick the provider set for the current console base. */
 export function getServices(_base: OpsBase): PlatformServices {
-  return tenantServices;
+  return import.meta.env.VITE_USE_SAMPLE_DATA === "true" ? sampleServices : tenantServices;
 }
 
 export type { PlatformServices };
