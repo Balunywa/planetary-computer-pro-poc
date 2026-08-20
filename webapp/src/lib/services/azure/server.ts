@@ -288,6 +288,26 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
       return { ok: false, message: "No public sample scenes were returned for the sample area." };
     }
 
+    let assetSasToken: string;
+    try {
+      const sasRes = await fetch(
+        "https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a",
+      );
+      if (!sasRes.ok) {
+        return {
+          ok: false,
+          message: `Could not acquire access to the public sample assets (${sasRes.status}).`,
+        };
+      }
+      const sas = (await sasRes.json()) as { token?: string };
+      if (!sas.token) {
+        return { ok: false, message: "The public sample asset token response was empty." };
+      }
+      assetSasToken = sas.token;
+    } catch {
+      return { ok: false, message: "Could not acquire access to the public sample assets." };
+    }
+
     // 2. Create the collection in the tenant catalog (ignore 409 if it exists).
     const collection = {
       type: "Collection",
@@ -325,24 +345,48 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
 
     // 3. Ingest the items, re-homing them onto the new collection.
     let ingested = 0;
+    let lastIngestionError = "";
     for (const item of items) {
       item["collection"] = collectionId;
-      delete item["links"];
+      item["links"] = [
+        {
+          rel: "collection",
+          type: "application/json",
+          href: geoCatalogApiUrl(base, `stac/collections/${collectionId}`),
+        },
+      ];
+      const assets = item["assets"] as Record<string, { href?: string }> | undefined;
+      if (assets) {
+        delete assets["rendered_preview"];
+        delete assets["preview"];
+        delete assets["tilejson"];
+        for (const asset of Object.values(assets)) {
+          if (!asset.href?.includes(".blob.core.windows.net/")) continue;
+          const assetUrl = new URL(asset.href);
+          assetUrl.search = assetSasToken;
+          asset.href = assetUrl.toString();
+        }
+      }
       try {
         const iRes = await fetch(geoCatalogApiUrl(base, `stac/collections/${collectionId}/items`), {
           method: "POST",
           headers: authJson,
           body: JSON.stringify(item),
         });
-        if (iRes.ok || iRes.status === 409) ingested++;
+        if (iRes.ok || iRes.status === 409) {
+          ingested++;
+        } else {
+          lastIngestionError = (await iRes.text()).slice(0, 200);
+        }
       } catch {
-        // Skip an item that fails to ingest; report the count we managed.
+        lastIngestionError = "Could not reach the GeoCatalog item-ingestion endpoint.";
       }
     }
     if (ingested === 0) {
       return {
         ok: false,
-        message: "The sample collection was created but no items could be ingested.",
+        message:
+          `The sample collection was created but no items could be ingested. ${lastIngestionError}`.trim(),
       };
     }
     return {
