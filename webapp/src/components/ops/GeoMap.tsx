@@ -192,8 +192,7 @@ export default function GeoMap({
     ];
   }, [catalogData]);
   const defaultBoundsRef = useRef(GULF_BOUNDS);
-  defaultBoundsRef.current =
-    !event && assets.length === 0 && catalogBounds ? catalogBounds : GULF_BOUNDS;
+  defaultBoundsRef.current = !event && catalogBounds ? catalogBounds : GULF_BOUNDS;
 
   // ---------------------------------------------------------------- sources
   const assetPoints: FeatureCollection = useMemo(() => {
@@ -748,6 +747,12 @@ export default function GeoMap({
   useEffect(() => {
     if (ready) buildLayers();
   }, [ready, buildLayers]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || userMovedRef.current || event || !catalogBounds) return;
+    map.fitBounds(catalogBounds, { padding: 56, animate: false });
+  }, [ready, event, catalogBounds]);
 
   // basemap swap re-adds the operational layers on top of the new style
   const lastBasemap = useRef<string | null>(null);

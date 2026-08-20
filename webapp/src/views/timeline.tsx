@@ -101,36 +101,30 @@ export function TimelinePage() {
                 ))}
               </div>
             </div>
-            <div className="h-[420px]">
-              {event ? (
-                <OpsMap
-                  className="h-full w-full"
-                  assets={assets}
-                  risks={riskMap}
-                  event={event}
-                  hour={hour}
-                  layers={{ assets: true, track: true, wind: true }}
-                  selectedId={selected}
-                  onSelect={setSelected}
-                />
-              ) : (
-                <div className="grid h-full place-items-center p-6 text-center">
-                  <div className="max-w-sm">
-                    <h2 className="text-sm font-semibold">No forecast to scrub</h2>
-                    <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-                      {assets.length === 0
-                        ? "Add your assets, then an active weather event, to animate exposure across the forecast horizon."
-                        : "When the weather provider reports a system, its movement and the resulting change in asset exposure animate here."}
-                    </p>
-                    {assets.length === 0 && (
-                      <OpsLink
-                        to="/"
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15"
-                      >
-                        Add data from the Operations Overview
-                      </OpsLink>
-                    )}
-                  </div>
+            <div className="relative h-[420px]">
+              <OpsMap
+                className="h-full w-full"
+                assets={assets}
+                risks={riskMap}
+                event={event}
+                hour={hour}
+                layers={{ assets: true, track: true, wind: true }}
+                selectedId={selected}
+                onSelect={setSelected}
+              />
+              {!event && (
+                <div className="pointer-events-none absolute top-3 left-1/2 z-10 w-[min(90%,24rem)] -translate-x-1/2 rounded-sm border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur">
+                  <p className="text-[11px] text-muted-foreground">
+                    Basemap ready. Forecast movement will appear when weather data is available.
+                  </p>
+                  {assets.length === 0 && (
+                    <OpsLink
+                      to="/"
+                      className="pointer-events-auto mt-1 inline-flex text-[11px] font-medium text-primary hover:underline"
+                    >
+                      Add operational data
+                    </OpsLink>
+                  )}
                 </div>
               )}
             </div>

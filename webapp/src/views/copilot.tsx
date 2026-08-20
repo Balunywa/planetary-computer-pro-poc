@@ -148,18 +148,16 @@ export function CopilotPage() {
         </div>
 
         <div className="panel h-[calc(100vh-11rem)] overflow-hidden">
-          {event && (
-            <OpsMap
-              className="h-full w-full"
-              assets={assets}
-              risks={riskMap}
-              event={event}
-              layers={{ assets: true, track: true, wind: true }}
-              highlightIds={highlight}
-              selectedId={selected}
-              onSelect={setSelected}
-            />
-          )}
+          <OpsMap
+            className="h-full w-full"
+            assets={assets}
+            risks={riskMap}
+            event={event}
+            layers={{ assets: true, track: true, wind: true }}
+            highlightIds={highlight}
+            selectedId={selected}
+            onSelect={setSelected}
+          />
         </div>
       </div>
     </AppShell>

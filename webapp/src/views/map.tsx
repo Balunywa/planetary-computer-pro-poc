@@ -197,39 +197,27 @@ export function MapPage() {
         </div>
 
         <div className="relative min-w-0 flex-1">
-          {event || (layerDefs.data ?? []).some((layer) => (layer.itemCount ?? 0) > 0) ? (
-            <OpsMap
-              className="h-full w-full"
-              assets={filtered}
-              risks={riskMap}
-              event={event}
-              layers={layers}
-              catalogLayers={layerDefs.data ?? []}
-              selectedId={selected}
-              onSelect={setSelected}
-            />
-          ) : (
-            <div className="grid h-full place-items-center p-6 text-center">
-              <div className="max-w-sm">
-                <h2 className="text-sm font-semibold">
-                  {assets.length === 0 && (layerDefs.data?.length ?? 0) === 0
-                    ? "No data to map yet"
-                    : "No active weather event"}
-                </h2>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-                  {assets.length === 0 && (layerDefs.data?.length ?? 0) === 0
-                    ? "Add your assets and geospatial layers to see them on the live map."
-                    : "When the weather provider reports a system in the operating region, its track, wind field and forecast cone appear here over your assets."}
-                </p>
-                {assets.length === 0 && (
-                  <OpsLink
-                    to="/"
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15"
-                  >
-                    Add data from the Operations Overview
-                  </OpsLink>
-                )}
-              </div>
+          <OpsMap
+            className="h-full w-full"
+            assets={filtered}
+            risks={riskMap}
+            event={event}
+            layers={layers}
+            catalogLayers={layerDefs.data ?? []}
+            selectedId={selected}
+            onSelect={setSelected}
+          />
+          {!event && assets.length === 0 && (layerDefs.data?.length ?? 0) === 0 && (
+            <div className="pointer-events-none absolute top-3 left-1/2 z-10 w-[min(90%,24rem)] -translate-x-1/2 rounded-sm border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur">
+              <p className="text-[11px] text-muted-foreground">
+                Basemap ready. Assets, catalog layers, and weather will appear automatically.
+              </p>
+              <OpsLink
+                to="/"
+                className="pointer-events-auto mt-1 inline-flex text-[11px] font-medium text-primary hover:underline"
+              >
+                Add data from the Operations Overview
+              </OpsLink>
             </div>
           )}
         </div>

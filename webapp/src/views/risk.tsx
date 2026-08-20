@@ -153,17 +153,15 @@ export function RiskPage() {
 
         <div className="space-y-4">
           <div className="panel h-[340px] overflow-hidden">
-            {event && (
-              <OpsMap
-                className="h-full w-full"
-                assets={assets}
-                risks={riskMap}
-                event={event}
-                layers={{ assets: true, track: true, wind: true }}
-                selectedId={selected}
-                onSelect={setSelected}
-              />
-            )}
+            <OpsMap
+              className="h-full w-full"
+              assets={assets}
+              risks={riskMap}
+              event={event}
+              layers={{ assets: true, track: true, wind: true }}
+              selectedId={selected}
+              onSelect={setSelected}
+            />
           </div>
           {selectedAsset ? (
             <div className="panel max-h-[520px] overflow-hidden">

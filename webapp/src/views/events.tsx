@@ -20,13 +20,23 @@ export function EventsPage() {
           description="Active tropical and severe-weather systems affecting the operating region, with forecast trajectory and asset exposure."
         />
         <div className="p-4">
-          <div className="panel flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-            <h2 className="text-sm font-semibold">No active weather events</h2>
-            <p className="max-w-md text-[12px] leading-relaxed text-muted-foreground">
-              There are no tropical or severe-weather systems in the operating region for the
-              current forecast cycle. Active systems from the weather forecast provider will appear
-              here with their track, intensity and the assets they expose.
-            </p>
+          <div className="panel relative h-[min(68vh,620px)] overflow-hidden">
+            <OpsMap
+              className="h-full w-full"
+              assets={assets}
+              risks={riskMap}
+              event={event}
+              layers={{ assets: true, track: true, wind: true }}
+              selectedId={selected}
+              onSelect={setSelected}
+            />
+            <div className="pointer-events-none absolute top-3 left-1/2 z-10 w-[min(90%,28rem)] -translate-x-1/2 rounded-sm border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur">
+              <h2 className="text-xs font-semibold">No active weather events</h2>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                The basemap is ready. New systems and exposed assets will appear automatically when
+                the forecast provider updates.
+              </p>
+            </div>
           </div>
         </div>
       </AppShell>
