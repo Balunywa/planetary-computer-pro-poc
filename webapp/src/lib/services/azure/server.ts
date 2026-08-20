@@ -83,13 +83,30 @@ export const listStacLayers = createServerFn({ method: "GET" }).handler(
       const body = (await res.json()) as {
         collections?: Array<{ id: string; title?: string; description?: string }>;
       };
-      return (body.collections ?? []).map((c) => ({
-        id: c.id,
-        name: c.title || c.id,
-        description: c.description || "STAC collection",
-        updatedLabel: "From your GeoCatalog",
-        defaultOn: false,
-      }));
+      return Promise.all(
+        (body.collections ?? []).map(async (c) => {
+          const itemsRes = await fetch(
+            geoCatalogApiUrl(geoCatalogUrl, `stac/collections/${c.id}/items`),
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          const data = itemsRes.ok
+            ? ((await itemsRes.json()) as {
+                type: "FeatureCollection";
+                features?: Array<Record<string, unknown>>;
+              })
+            : { type: "FeatureCollection" as const, features: [] };
+          const features = data.features ?? [];
+          return {
+            id: c.id,
+            name: c.title || c.id,
+            description: c.description || "STAC collection",
+            updatedLabel: `${features.length} item${features.length === 1 ? "" : "s"} from GeoCatalog`,
+            defaultOn: features.length > 0,
+            itemCount: features.length,
+            data: { type: "FeatureCollection" as const, features },
+          };
+        }),
+      );
     } catch {
       return [];
     }
@@ -259,16 +276,25 @@ const OPERATING_STATUSES = new Set<OperatingStatus>([
 ]);
 
 function normalizeType(v: string): AssetType {
-  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const s = v
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if (s === "platform") return "offshore_platform";
   return ASSET_TYPES.has(s as AssetType) ? (s as AssetType) : "well";
 }
 function normalizeStatus(v: string): OperatingStatus {
-  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const s = v
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return OPERATING_STATUSES.has(s as OperatingStatus) ? (s as OperatingStatus) : "producing";
 }
 function normalizeCriticality(v: string): Asset["criticality"] {
-  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const s = v
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return s === "business_critical" || s === "important" ? s : "standard";
 }
 
@@ -297,7 +323,10 @@ function splitCsvLine(line: string): string[] {
 }
 
 function parseCsvAssets(text: string): Asset[] {
-  const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim().length > 0);
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
   const header = splitCsvLine(lines[0]!).map((h) => h.toLowerCase());
   const pick = (row: string[], ...names: string[]): string => {
@@ -357,12 +386,19 @@ function parseGeoJsonAssets(text: string): Asset[] {
   // metadata, not an asset register — never ingest it as an asset.
   if (root && "stac_version" in root) return [];
   const features: unknown[] =
-    root?.type === "FeatureCollection" ? (root.features ?? []) : root?.type === "Feature" ? [doc] : [];
+    root?.type === "FeatureCollection"
+      ? (root.features ?? [])
+      : root?.type === "Feature"
+        ? [doc]
+        : [];
   const out: Asset[] = [];
   for (const raw of features) {
     // Skip STAC items that may have been dropped into the same container.
     if (raw && typeof raw === "object" && ("stac_version" in raw || "assets" in raw)) continue;
-    const f = raw as { properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } };
+    const f = raw as {
+      properties?: Record<string, unknown>;
+      geometry?: { type?: string; coordinates?: unknown };
+    };
     const p = f?.properties ?? {};
     const g = f?.geometry ?? {};
     const id = String(p["id"] ?? "").trim();

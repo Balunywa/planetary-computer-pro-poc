@@ -15,9 +15,7 @@ const AZURE_KEY = import.meta.env["VITE_AZURE_MAPS_KEY"] as string | undefined;
 const ATTRIB_ESRI = "Imagery &copy; Esri, Maxar, Earthstar Geographics";
 const ATTRIB_ESRI_OCEAN = "Bathymetry &copy; Esri, GEBCO, NOAA, National Geographic";
 const ATTRIB_AZURE = "&copy; Microsoft, &copy; TomTom";
-
-/** Keyless OpenStreetMap vector tiles — crisp at any zoom/DPR, no API key. */
-const OPENFREEMAP_DARK = "https://tiles.openfreemap.org/styles/dark";
+const ATTRIB_CARTO = "&copy; OpenStreetMap contributors, &copy; CARTO";
 
 function rasterStyle(
   layers: { tiles: string[]; opacity?: number }[],
@@ -106,7 +104,15 @@ export function basemapStyle(id: BasemapId): StyleSpecification | string {
     );
   }
 
-  return OPENFREEMAP_DARK;
+  return rasterStyle(
+    [
+      {
+        tiles: ["https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"],
+      },
+    ],
+    ATTRIB_CARTO,
+    "#08111c",
+  );
 }
 
-export const basemapProviderLabel = AZURE_KEY ? "Azure Maps" : "OpenFreeMap / OpenStreetMap";
+export const basemapProviderLabel = AZURE_KEY ? "Azure Maps" : "CARTO / OpenStreetMap";

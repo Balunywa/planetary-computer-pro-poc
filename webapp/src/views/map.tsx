@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
 import { AppShell } from "@/components/ops/AppShell";
@@ -32,6 +32,17 @@ export function MapPage() {
   const [level, setLevel] = useState<RiskLevel | "all">("all");
   const [unit, setUnit] = useState("all");
   const [operator, setOperator] = useState("all");
+
+  useEffect(() => {
+    if (!layerDefs.data) return;
+    setLayers((current) => {
+      const next = { ...current };
+      for (const layer of layerDefs.data) {
+        if (!(layer.id in next)) next[layer.id] = layer.defaultOn;
+      }
+      return next;
+    });
+  }, [layerDefs.data]);
 
   const units = useMemo(() => Array.from(new Set(assets.map((a) => a.businessUnit))), [assets]);
   const operators = useMemo(() => Array.from(new Set(assets.map((a) => a.operator))), [assets]);
@@ -186,13 +197,14 @@ export function MapPage() {
         </div>
 
         <div className="relative min-w-0 flex-1">
-          {event ? (
+          {event || (layerDefs.data ?? []).some((layer) => (layer.itemCount ?? 0) > 0) ? (
             <OpsMap
               className="h-full w-full"
               assets={filtered}
               risks={riskMap}
               event={event}
               layers={layers}
+              catalogLayers={layerDefs.data ?? []}
               selectedId={selected}
               onSelect={setSelected}
             />
@@ -200,10 +212,12 @@ export function MapPage() {
             <div className="grid h-full place-items-center p-6 text-center">
               <div className="max-w-sm">
                 <h2 className="text-sm font-semibold">
-                  {assets.length === 0 ? "No data to map yet" : "No active weather event"}
+                  {assets.length === 0 && (layerDefs.data?.length ?? 0) === 0
+                    ? "No data to map yet"
+                    : "No active weather event"}
                 </h2>
                 <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-                  {assets.length === 0
+                  {assets.length === 0 && (layerDefs.data?.length ?? 0) === 0
                     ? "Add your assets and geospatial layers to see them on the live map."
                     : "When the weather provider reports a system in the operating region, its track, wind field and forecast cone appear here over your assets."}
                 </p>

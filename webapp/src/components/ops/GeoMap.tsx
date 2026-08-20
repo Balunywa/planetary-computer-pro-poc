@@ -5,7 +5,13 @@ import { Crosshair, Minus, Plus } from "lucide-react";
 import type { Feature, FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import type { Asset, AssetRisk, RiskLevel, WeatherEvent } from "@/lib/domain/types";
+import type {
+  Asset,
+  AssetRisk,
+  GeospatialLayer,
+  RiskLevel,
+  WeatherEvent,
+} from "@/lib/domain/types";
 import { basemapProviderLabel, basemapStyle, type BasemapId } from "@/lib/map/basemap";
 import { circlePolygon, conePolygon, empty, feature, quadrantPolygon } from "@/lib/map/geojson";
 import { riskColorVar } from "@/lib/format";
@@ -16,8 +22,9 @@ export type LayerState = Record<string, boolean>;
 export interface OpsMapProps {
   assets: Asset[];
   risks: Map<string, AssetRisk>;
-  event: WeatherEvent;
+  event?: WeatherEvent | null | undefined;
   layers: LayerState;
+  catalogLayers?: GeospatialLayer[] | undefined;
   selectedId?: string | null | undefined;
   highlightIds?: string[] | undefined;
   hour?: number | undefined;
@@ -96,7 +103,8 @@ function categoryLabel(category: number, windMph: number): string {
   return windMph >= 39 ? "TS" : "TD";
 }
 
-function interpolatePosition(event: WeatherEvent, hour: number) {
+function interpolatePosition(event: WeatherEvent | null | undefined, hour: number) {
+  if (!event || event.forecast.length === 0) return null;
   const f = event.forecast;
   for (let i = 0; i < f.length - 1; i++) {
     const a = f[i]!;
@@ -131,6 +139,7 @@ export default function GeoMap({
   risks,
   event,
   layers,
+  catalogLayers = [],
   selectedId,
   highlightIds = [],
   hour = 0,
@@ -154,6 +163,24 @@ export default function GeoMap({
   assetsRef.current = assets;
 
   const pos = useMemo(() => interpolatePosition(event, hour), [event, hour]);
+
+  const catalogData: FeatureCollection = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: catalogLayers.flatMap((layer) =>
+        layers[layer.id]
+          ? (layer.data?.features ?? []).map((item) => ({
+              ...item,
+              properties: {
+                ...item.properties,
+                catalogCollection: layer.name,
+              },
+            }))
+          : [],
+      ) as Feature[],
+    }),
+    [catalogLayers, layers],
+  );
 
   // ---------------------------------------------------------------- sources
   const assetPoints: FeatureCollection = useMemo(() => {
@@ -203,6 +230,9 @@ export default function GeoMap({
   }, [assets, risks, selectedId]);
 
   const trackData = useMemo(() => {
+    if (!event) {
+      return { forecast: empty(), history: empty(), cone: empty(), points: empty() };
+    }
     const forecastLine = feature({
       type: "LineString",
       coordinates: event.forecast.map((p) => [p.lon, p.lat]),
@@ -233,6 +263,7 @@ export default function GeoMap({
 
   /** Ensemble spread: each member's centerline, conveying track uncertainty. */
   const ensembleData: FeatureCollection = useMemo(() => {
+    if (!event) return empty();
     const members = event.ensemble ?? [];
     return {
       type: "FeatureCollection",
@@ -244,6 +275,7 @@ export default function GeoMap({
 
   /** Previous forecast cycle, for cycle-over-cycle comparison. */
   const previousData = useMemo(() => {
+    if (!event) return { line: empty(), cone: empty() };
     const prev = event.previousForecast ?? [];
     if (prev.length < 2) return { line: empty(), cone: empty() };
     return {
@@ -263,6 +295,7 @@ export default function GeoMap({
   }, [event]);
 
   const windData: FeatureCollection = useMemo(() => {
+    if (!pos) return empty();
     const scale = pos.windMph / 130;
     const rings = [
       { kt: 64, quad: [68, 58, 40, 48], color: token("--color-cat5", "#f0abfc"), opacity: 0.2 },
@@ -287,7 +320,7 @@ export default function GeoMap({
   const rainData: FeatureCollection = useMemo(
     () => ({
       type: "FeatureCollection",
-      features: event.forecast.map(
+      features: (event?.forecast ?? []).map(
         (p) => feature(circlePolygon(p.lon, p.lat, 170, 40), { hour: p.hour }) as Feature,
       ),
     }),
@@ -297,17 +330,20 @@ export default function GeoMap({
   const centerData: FeatureCollection = useMemo(
     () => ({
       type: "FeatureCollection",
-      features: [
-        feature(
-          { type: "Point", coordinates: [pos.lon, pos.lat] },
-          {
-            name: event.name,
-            wind: `${pos.windMph} mph`,
-          },
-        ) as Feature,
-      ],
+      features:
+        pos && event
+          ? [
+              feature(
+                { type: "Point", coordinates: [pos.lon, pos.lat] },
+                {
+                  name: event.name,
+                  wind: `${pos.windMph} mph`,
+                },
+              ) as Feature,
+            ]
+          : [],
     }),
-    [pos, event.name],
+    [pos, event],
   );
 
   const floodData: FeatureCollection = useMemo(() => {
@@ -332,7 +368,9 @@ export default function GeoMap({
       dragRotate: false,
       maxZoom: 12,
       minZoom: 3,
+      preserveDrawingBuffer: true,
     });
+    map.getCanvasContainer().style.height = "100%";
     map.touchZoomRotate.disableRotation();
     mapRef.current = map;
 
@@ -404,6 +442,7 @@ export default function GeoMap({
     src("track-points", empty());
     src("pipelines", empty());
     src("assets", empty());
+    src("catalog-items", empty());
     src("storm-center", empty());
 
     const add = (layer: maplibregl.LayerSpecification) => {
@@ -497,6 +536,25 @@ export default function GeoMap({
         "line-color": token("--color-track", "#e2e8f0"),
         "line-width": 2.4,
         "line-dasharray": [3, 2],
+      },
+    });
+    add({
+      id: "catalog-item-fill",
+      type: "fill",
+      source: "catalog-items",
+      paint: {
+        "fill-color": token("--color-primary", "#22d3ee"),
+        "fill-opacity": 0.2,
+      },
+    });
+    add({
+      id: "catalog-item-line",
+      type: "line",
+      source: "catalog-items",
+      paint: {
+        "line-color": token("--color-primary", "#22d3ee"),
+        "line-opacity": 0.95,
+        "line-width": 2,
       },
     });
     add({
@@ -706,6 +764,7 @@ export default function GeoMap({
     };
     set("assets", assetPoints, !!layers["assets"]);
     set("pipelines", pipelineLines, !!layers["assets"]);
+    set("catalog-items", catalogData, true);
     set("cone", trackData.cone, !!layers["track"]);
     set("forecast", trackData.forecast, !!layers["track"]);
     set("history", trackData.history, !!layers["track"] || !!layers["history"]);
@@ -717,12 +776,14 @@ export default function GeoMap({
     set("rain", rainData, !!layers["rain"]);
     set("flood", floodData, !!layers["flood"]);
     set("storm-center", centerData, true);
+    map.triggerRepaint();
   }, [
     ready,
     styleVersion,
     layers,
     assetPoints,
     pipelineLines,
+    catalogData,
     trackData,
     ensembleData,
     previousData,

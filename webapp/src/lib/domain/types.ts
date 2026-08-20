@@ -1,3 +1,5 @@
+import type { FeatureCollection } from "geojson";
+
 // Core domain model for the Oil & Gas Weather & Asset Risk platform.
 // Deliberately provider-agnostic: mock providers and future Azure providers
 // (Planetary Computer Pro, Aurora/ECMWF, AI Foundry) implement the same shapes.
@@ -121,6 +123,8 @@ export interface GeospatialLayer {
   description: string;
   updatedLabel: string;
   defaultOn: boolean;
+  itemCount?: number;
+  data?: FeatureCollection;
 }
 
 // ---------------------------------------------------------------------------
