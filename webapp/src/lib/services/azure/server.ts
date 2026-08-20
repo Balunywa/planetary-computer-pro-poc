@@ -9,8 +9,11 @@ import type {
   Asset,
   AssetType,
   CopilotAnswer,
+  GateId,
+  GateState,
   GeospatialLayer,
   OperatingStatus,
+  OpsAlert,
   ThresholdRule,
   WeatherEvent,
 } from "@/lib/domain/types";
@@ -206,11 +209,38 @@ export const getDataPlaneStatus = createServerFn({ method: "GET" }).handler(
     uploadConfigured: Boolean(process.env["SAMPLE_CONTAINER_URL"]),
     auroraEndpointConfigured: Boolean(process.env["AURORA_ENDPOINT"]),
     auroraModelDeployed: process.env["AURORA_MODEL_DEPLOYED"] === "true",
-    auroraAdapterConnected: false,
+    auroraAdapterConnected: await auroraOutputFresh(),
   }),
 );
 
 const WEATHER_EVENTS_BLOB_NAME = "weather-events.json";
+
+/**
+ * True when the Aurora post-processing job has published a recent weather-events
+ * blob to the model-outputs container. This is the honest runtime signal that the
+ * grid-to-WeatherEvent adapter is not just implemented but actually producing
+ * output — a stale or missing file reports the adapter as not connected.
+ */
+async function auroraOutputFresh(): Promise<boolean> {
+  const containerUrl = process.env["UPLOAD_CONTAINER_URL"];
+  if (!containerUrl) return false;
+  const token = await getManagedIdentityToken(STORAGE_RESOURCE);
+  if (!token) return false;
+  const maxAgeHours = Number(process.env["AURORA_OUTPUT_MAX_AGE_HOURS"] ?? "24");
+  try {
+    const res = await fetch(`${containerUrl.replace(/\/$/, "")}/${WEATHER_EVENTS_BLOB_NAME}`, {
+      method: "HEAD",
+      headers: { Authorization: `Bearer ${token}`, "x-ms-version": "2021-08-06" },
+    });
+    if (!res.ok) return false;
+    const lastModified = res.headers.get("last-modified");
+    if (!lastModified) return true;
+    const ageMs = Date.now() - new Date(lastModified).getTime();
+    return Number.isFinite(ageMs) && ageMs <= maxAgeHours * 3_600_000;
+  } catch {
+    return false;
+  }
+}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -757,82 +787,169 @@ export const seedPublicSample = createServerFn({ method: "POST" }).handler(
 // ---------------------------------------------------------------------------
 
 const THRESHOLD_BLOB_NAME = "app-config.threshold-rules.json";
+const POSTURE_BLOB_NAME = "app-config.posture-overrides.json";
+const ALERT_STATUS_BLOB_NAME = "app-config.alert-status.json";
 
-function thresholdBlobUrl(containerUrl: string): string {
-  return `${containerUrl.replace(/\/$/, "")}/${THRESHOLD_BLOB_NAME}`;
+function appConfigBlobUrl(containerUrl: string, blobName: string): string {
+  return `${containerUrl.replace(/\/$/, "")}/${blobName}`;
+}
+
+/** Read a JSON app-config blob, or null when missing / storage unwired. */
+async function loadJsonBlob<T>(blobName: string): Promise<T | null> {
+  const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
+  if (!containerUrl) return null;
+  const token = await getManagedIdentityToken(STORAGE_RESOURCE);
+  if (!token) return null;
+  try {
+    const res = await fetch(appConfigBlobUrl(containerUrl, blobName), {
+      headers: { Authorization: `Bearer ${token}`, "x-ms-version": "2021-08-06" },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+export type SaveResult = { ok: boolean; persisted: boolean; message: string };
+/** @deprecated Use SaveResult. Retained for callers still importing the old name. */
+export type SaveRulesResult = SaveResult;
+
+/**
+ * Write a JSON app-config blob. Returns persisted:false (not an error) when
+ * storage is unwired so local dev keeps working in-memory; ok:false only on a
+ * real storage failure the caller should surface to the operator.
+ */
+async function saveJsonBlob(blobName: string, value: unknown, label: string): Promise<SaveResult> {
+  const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
+  if (!containerUrl) {
+    return {
+      ok: true,
+      persisted: false,
+      message: `Storage not configured; ${label} kept in memory for this session.`,
+    };
+  }
+  const token = await getManagedIdentityToken(STORAGE_RESOURCE);
+  if (!token) {
+    return {
+      ok: false,
+      persisted: false,
+      message: "Could not acquire a managed-identity token for storage.",
+    };
+  }
+  const body = Buffer.from(JSON.stringify(value), "utf8");
+  try {
+    const res = await fetch(appConfigBlobUrl(containerUrl, blobName), {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "x-ms-blob-type": "BlockBlob",
+        "x-ms-version": "2021-08-06",
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    if (!res.ok) {
+      return { ok: false, persisted: false, message: `Could not save ${label} (${res.status}).` };
+    }
+    return { ok: true, persisted: true, message: `${label} saved.` };
+  } catch {
+    return { ok: false, persisted: false, message: `Could not reach storage to save ${label}.` };
+  }
 }
 
 /** Load persisted threshold rules, or null when none are stored / storage unwired. */
 export const loadThresholdRules = createServerFn({ method: "GET" }).handler(
   async (): Promise<ThresholdRule[] | null> => {
-    const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
-    if (!containerUrl) return null;
-    const token = await getManagedIdentityToken(STORAGE_RESOURCE);
-    if (!token) return null;
-    try {
-      const res = await fetch(thresholdBlobUrl(containerUrl), {
-        headers: { Authorization: `Bearer ${token}`, "x-ms-version": "2021-08-06" },
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) return null;
-      const rules = (await res.json()) as ThresholdRule[];
-      return Array.isArray(rules) ? rules : null;
-    } catch {
-      return null;
-    }
+    const rules = await loadJsonBlob<ThresholdRule[]>(THRESHOLD_BLOB_NAME);
+    return Array.isArray(rules) ? rules : null;
   },
 );
 
-export type SaveRulesResult = { ok: boolean; persisted: boolean; message: string };
-
-/**
- * Persist the full threshold-rule set to storage. Returns persisted:false (not an
- * error) when storage is unwired, so the caller keeps working in-memory locally.
- */
+/** Persist the full threshold-rule set to storage. */
 export const saveThresholdRules = createServerFn({ method: "POST" })
   .validator((data: { rules: ThresholdRule[] }) => data)
-  .handler(async ({ data }): Promise<SaveRulesResult> => {
-    const containerUrl = process.env["SAMPLE_CONTAINER_URL"];
-    if (!containerUrl) {
-      return {
-        ok: true,
-        persisted: false,
-        message: "Storage not configured; rules kept in memory for this session.",
-      };
+  .handler(async ({ data }): Promise<SaveResult> => {
+    if (!Array.isArray(data?.rules)) {
+      return { ok: false, persisted: false, message: "Invalid threshold payload." };
     }
-    const token = await getManagedIdentityToken(STORAGE_RESOURCE);
-    if (!token) {
-      return {
-        ok: false,
-        persisted: false,
-        message: "Could not acquire a managed-identity token for storage.",
-      };
-    }
-    const body = Buffer.from(JSON.stringify(data.rules), "utf8");
-    try {
-      const res = await fetch(thresholdBlobUrl(containerUrl), {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "x-ms-blob-type": "BlockBlob",
-          "x-ms-version": "2021-08-06",
-          "Content-Type": "application/json",
-        },
-        body,
-      });
-      if (!res.ok) {
-        return {
-          ok: false,
-          persisted: false,
-          message: `Could not save thresholds (${res.status}).`,
-        };
-      }
-      return { ok: true, persisted: true, message: "Thresholds saved." };
-    } catch {
-      return {
-        ok: false,
-        persisted: false,
-        message: "Could not reach storage to save thresholds.",
-      };
-    }
+    return saveJsonBlob(THRESHOLD_BLOB_NAME, data.rules, "thresholds");
   });
+
+// ---------------------------------------------------------------------------
+// Response-posture operator overrides. Posture is derived from live exposure;
+// when an operator advances a gate or changes production status the override is
+// persisted here so the decision survives restarts and is shared across workers.
+// ---------------------------------------------------------------------------
+
+export type PostureOverrides = {
+  gates: Record<string, Partial<Record<GateId, GateState>>>;
+  status: Record<string, OperatingStatus>;
+};
+
+const EMPTY_POSTURE_OVERRIDES: PostureOverrides = { gates: {}, status: {} };
+
+function normalizePostureOverrides(value: PostureOverrides | null): PostureOverrides {
+  if (!value || typeof value !== "object") return { gates: {}, status: {} };
+  return {
+    gates: value.gates && typeof value.gates === "object" ? value.gates : {},
+    status: value.status && typeof value.status === "object" ? value.status : {},
+  };
+}
+
+/** Load persisted posture overrides (gate + production-status changes). */
+export const loadPostureOverrides = createServerFn({ method: "GET" }).handler(
+  async (): Promise<PostureOverrides> => {
+    return normalizePostureOverrides(await loadJsonBlob<PostureOverrides>(POSTURE_BLOB_NAME));
+  },
+);
+
+/** Persist the full posture-override set. */
+export const savePostureOverrides = createServerFn({ method: "POST" })
+  .validator((data: { overrides: PostureOverrides }) => data)
+  .handler(async ({ data }): Promise<SaveResult> => {
+    return saveJsonBlob(
+      POSTURE_BLOB_NAME,
+      normalizePostureOverrides(data?.overrides ?? null),
+      "posture",
+    );
+  });
+
+// ---------------------------------------------------------------------------
+// Alert status overrides. Threshold breaches are derived each forecast cycle, so
+// acknowledgement / resolution is stored as a map keyed by the stable alert id
+// (ruleId-assetId) rather than as standalone alert records.
+// ---------------------------------------------------------------------------
+
+export type AlertStatusMap = Record<string, OpsAlert["status"]>;
+
+const ALERT_STATUSES = new Set<OpsAlert["status"]>(["open", "acknowledged", "resolved"]);
+
+function normalizeAlertStatuses(value: AlertStatusMap | null): AlertStatusMap {
+  if (!value || typeof value !== "object") return {};
+  const out: AlertStatusMap = {};
+  for (const [id, status] of Object.entries(value)) {
+    if (ALERT_STATUSES.has(status as OpsAlert["status"])) out[id] = status as OpsAlert["status"];
+  }
+  return out;
+}
+
+/** Load persisted alert status overrides. */
+export const loadAlertStatuses = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AlertStatusMap> => {
+    return normalizeAlertStatuses(await loadJsonBlob<AlertStatusMap>(ALERT_STATUS_BLOB_NAME));
+  },
+);
+
+/** Persist the full alert status-override map. */
+export const saveAlertStatuses = createServerFn({ method: "POST" })
+  .validator((data: { statuses: AlertStatusMap }) => data)
+  .handler(async ({ data }): Promise<SaveResult> => {
+    return saveJsonBlob(
+      ALERT_STATUS_BLOB_NAME,
+      normalizeAlertStatuses(data?.statuses ?? null),
+      "alert status",
+    );
+  });
+
+export { EMPTY_POSTURE_OVERRIDES };

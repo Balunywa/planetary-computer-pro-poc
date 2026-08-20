@@ -36,6 +36,8 @@ export interface RiskEngineService {
 export interface AlertService {
   listAlerts(): Promise<OpsAlert[]>;
   setStatus(id: string, status: OpsAlert["status"]): Promise<OpsAlert[]>;
+  /** Persisted status overrides keyed by stable alert id, applied to derived alerts. */
+  listStatusOverrides(): Promise<Record<string, OpsAlert["status"]>>;
 }
 
 /** Decision state of the estate: lead-time gates, shut-in and personnel status. */

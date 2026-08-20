@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { OpsLink, useOpsBase } from "@/components/ops/ops-nav";
 import { AppShell, PageHeader } from "@/components/ops/AppShell";
 import {
+  alertStatusOverridesQuery,
   alertsQuery,
   assetsQuery,
   thresholdRulesQuery,
@@ -27,8 +28,9 @@ export function AlertsPage() {
   const baseAlerts = useQuery(alertsQuery(base)).data ?? [];
   const assets = useQuery(assetsQuery(base)).data ?? [];
   const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
+  const statusOverrides = useQuery(alertStatusOverridesQuery(base)).data ?? {};
   const { risks, event } = useOpsSnapshot(base, 120);
-  const [localStatus, setLocalStatus] = useState<Record<string, OpsAlert["status"]>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Threshold breaches become first-class alerts, so the feed reflects the
   // limits operators configured rather than a fixed list.
@@ -59,14 +61,18 @@ export function AlertsPage() {
           severity: b.severity,
           assetId: b.assetId,
           eventId: cycleId,
-          status: localStatus[id] ?? "open",
+          status: statusOverrides[id] ?? "open",
           owner: b.owner,
           createdAtIso: cycleIso,
         } satisfies OpsAlert;
       });
-  }, [rules, assets, risks, event, localStatus]);
+  }, [rules, assets, risks, event, statusOverrides]);
 
-  const alerts = useMemo(() => [...derived, ...baseAlerts], [derived, baseAlerts]);
+  const alerts = useMemo(
+    () =>
+      [...derived, ...baseAlerts].map((a) => ({ ...a, status: statusOverrides[a.id] ?? a.status })),
+    [derived, baseAlerts, statusOverrides],
+  );
   const [severity, setSeverity] = useState<AlertSeverity | "all">("all");
   const [status, setStatus] = useState<OpsAlert["status"] | "all">("all");
 
@@ -75,12 +81,14 @@ export function AlertsPage() {
     .filter((a) => (status === "all" ? true : a.status === status));
 
   async function setAlertStatus(id: string, next: OpsAlert["status"]) {
-    if (id.startsWith("THR-")) {
-      setLocalStatus((s) => ({ ...s, [id]: next }));
-      return;
+    setActionError(null);
+    try {
+      await getServices(base).alerts.setStatus(id, next);
+      await qc.invalidateQueries({ queryKey: [base, "alert-status-overrides"] });
+      await qc.invalidateQueries({ queryKey: [base, "alerts"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not update the alert status.");
     }
-    await getServices(base).alerts.setStatus(id, next);
-    await qc.invalidateQueries({ queryKey: [base, "alerts"] });
   }
 
   const counts = (["critical", "warning", "advisory", "info"] as AlertSeverity[]).map((s) => ({
@@ -103,6 +111,14 @@ export function AlertsPage() {
         }
       />
       <div className="space-y-4 p-4">
+        {actionError && (
+          <div
+            role="alert"
+            className="rounded-sm border border-risk-critical/50 bg-risk-critical/10 px-3 py-2 text-xs text-risk-critical"
+          >
+            {actionError}
+          </div>
+        )}
         <div className="panel grid grid-cols-2 divide-x sm:grid-cols-4">
           {counts.map((c) => (
             <button

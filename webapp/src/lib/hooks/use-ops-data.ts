@@ -40,6 +40,14 @@ export function alertsQuery(base: OpsBase) {
   });
 }
 
+export function alertStatusOverridesQuery(base: OpsBase) {
+  return queryOptions({
+    queryKey: [base, "alert-status-overrides"],
+    queryFn: () => getServices(base).alerts.listStatusOverrides(),
+    staleTime: 30 * 1000,
+  });
+}
+
 export function postureQuery(base: OpsBase) {
   return queryOptions({
     queryKey: [base, "posture"],

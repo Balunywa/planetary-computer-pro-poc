@@ -82,6 +82,7 @@ export function PosturePage() {
   const { assets, riskMap, event } = useOpsSnapshot(base, 120);
   const postures = useQuery(postureQuery(base)).data ?? [];
   const [onlyActive, setOnlyActive] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const byId = new Map(assets.map((a) => [a.id, a]));
@@ -114,16 +115,31 @@ export function PosturePage() {
   ).length;
 
   async function cycleGate(assetId: string, gate: GateId, state: GateState) {
-    await getServices(base).posture.setGate(assetId, gate, NEXT_STATE[state]);
-    await qc.invalidateQueries({ queryKey: [base, "posture"] });
+    setActionError(null);
+    try {
+      await getServices(base).posture.setGate(assetId, gate, NEXT_STATE[state]);
+      await qc.invalidateQueries({ queryKey: [base, "posture"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not record the gate decision.");
+    }
   }
   async function setStatus(assetId: string, status: OperatingStatus) {
-    await getServices(base).posture.setProductionStatus(assetId, status);
-    await qc.invalidateQueries({ queryKey: [base, "posture"] });
+    setActionError(null);
+    try {
+      await getServices(base).posture.setProductionStatus(assetId, status);
+      await qc.invalidateQueries({ queryKey: [base, "posture"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not update production status.");
+    }
   }
   async function reset() {
-    await getServices(base).posture.resetOverrides();
-    await qc.invalidateQueries({ queryKey: [base, "posture"] });
+    setActionError(null);
+    try {
+      await getServices(base).posture.resetOverrides();
+      await qc.invalidateQueries({ queryKey: [base, "posture"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not reset overrides.");
+    }
   }
 
   return (
@@ -142,6 +158,14 @@ export function PosturePage() {
       />
 
       <div className="space-y-4 p-4">
+        {actionError && (
+          <div
+            role="alert"
+            className="rounded-sm border border-risk-critical/50 bg-risk-critical/10 px-3 py-2 text-xs text-risk-critical"
+          >
+            {actionError}
+          </div>
+        )}
         <div className="panel grid grid-cols-2 divide-x md:grid-cols-6">
           {levelCounts.map((c) => (
             <div key={c.lvl} className="px-4 py-3">

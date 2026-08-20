@@ -34,8 +34,14 @@ import {
   listAuroraWeatherEvents,
   listStacLayers,
   listUploadedAssets,
+  loadAlertStatuses,
+  loadPostureOverrides,
   loadThresholdRules,
+  saveAlertStatuses,
+  savePostureOverrides,
   saveThresholdRules,
+  type AlertStatusMap,
+  type PostureOverrides,
 } from "@/lib/services/azure/server";
 
 /** Geospatial layers from the tenant's GeoCatalog STAC collections. */
@@ -112,49 +118,67 @@ export class AzureRiskEngineService implements RiskEngineService {
   }
 }
 
-/** Alerts derive from real threshold breaches; empty until data flows. */
+/**
+ * Alerts are derived from live threshold breaches in the view; this service owns
+ * their acknowledgement/resolution state, persisted as a map keyed by stable
+ * alert id so operator actions survive restarts and are shared across workers.
+ */
 export class AzureAlertService implements AlertService {
   async listAlerts(): Promise<OpsAlert[]> {
     return [];
   }
-  async setStatus(): Promise<OpsAlert[]> {
+  async listStatusOverrides(): Promise<AlertStatusMap> {
+    return loadAlertStatuses();
+  }
+  async setStatus(id: string, status: OpsAlert["status"]): Promise<OpsAlert[]> {
+    const current = await loadAlertStatuses();
+    const next: AlertStatusMap = { ...current, [id]: status };
+    const result = await saveAlertStatuses({ data: { statuses: next } });
+    if (!result.ok) throw new Error(result.message);
     return [];
   }
 }
 
-/** Response posture derives from real exposure, with process-local operator overrides. */
+/** Response posture derives from real exposure, with durable operator overrides. */
 export class AzurePostureService implements PostureService {
-  private gateOverrides = new Map<string, Partial<Record<GateId, GateState>>>();
-  private statusOverrides = new Map<string, OperatingStatus>();
-
-  private async build(): Promise<AssetPosture[]> {
+  private async build(overrides: PostureOverrides): Promise<AssetPosture[]> {
     const [assets, events] = await Promise.all([listUploadedAssets(), listAuroraWeatherEvents()]);
     return assets.map((asset) => {
       const base = derivePosture(asset, highestRiskFor(asset, events, 120) ?? undefined);
       return {
         ...base,
-        gates: { ...base.gates, ...(this.gateOverrides.get(asset.id) ?? {}) },
-        productionStatus: this.statusOverrides.get(asset.id) ?? base.productionStatus,
+        gates: { ...base.gates, ...(overrides.gates[asset.id] ?? {}) },
+        productionStatus: overrides.status[asset.id] ?? base.productionStatus,
       };
     });
   }
 
+  private async mutate(
+    apply: (overrides: PostureOverrides) => PostureOverrides,
+  ): Promise<AssetPosture[]> {
+    const next = apply(await loadPostureOverrides());
+    const result = await savePostureOverrides({ data: { overrides: next } });
+    if (!result.ok) throw new Error(result.message);
+    return this.build(next);
+  }
+
   async listPostures(): Promise<AssetPosture[]> {
-    return this.build();
+    return this.build(await loadPostureOverrides());
   }
   async setGate(assetId: string, gate: GateId, state: GateState): Promise<AssetPosture[]> {
-    const current = this.gateOverrides.get(assetId) ?? {};
-    this.gateOverrides.set(assetId, { ...current, [gate]: state });
-    return this.build();
+    return this.mutate((o) => ({
+      gates: { ...o.gates, [assetId]: { ...(o.gates[assetId] ?? {}), [gate]: state } },
+      status: o.status,
+    }));
   }
   async setProductionStatus(assetId: string, status: OperatingStatus): Promise<AssetPosture[]> {
-    this.statusOverrides.set(assetId, status);
-    return this.build();
+    return this.mutate((o) => ({
+      gates: o.gates,
+      status: { ...o.status, [assetId]: status },
+    }));
   }
   async resetOverrides(): Promise<AssetPosture[]> {
-    this.gateOverrides.clear();
-    this.statusOverrides.clear();
-    return this.build();
+    return this.mutate(() => ({ gates: {}, status: {} }));
   }
 }
 

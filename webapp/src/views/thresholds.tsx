@@ -58,6 +58,7 @@ export function ThresholdsPage() {
   const { assets, risks } = useOpsSnapshot(base, 120);
   const rules = useQuery(thresholdRulesQuery(base)).data ?? [];
   const [editing, setEditing] = useState<ThresholdRule | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const breaches = useMemo(() => evaluateRules(rules, assets, risks), [rules, assets, risks]);
   const nameOf = (id: string) => assets.find((a) => a.id === id)?.name ?? id;
@@ -69,17 +70,32 @@ export function ThresholdsPage() {
   }, [breaches]);
 
   async function save(rule: ThresholdRule) {
-    await getServices(base).thresholds.saveRule(rule);
-    await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
-    setEditing(null);
+    setActionError(null);
+    try {
+      await getServices(base).thresholds.saveRule(rule);
+      await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
+      setEditing(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not save the threshold.");
+    }
   }
   async function remove(id: string) {
-    await getServices(base).thresholds.deleteRule(id);
-    await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
+    setActionError(null);
+    try {
+      await getServices(base).thresholds.deleteRule(id);
+      await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not delete the threshold.");
+    }
   }
   async function reset() {
-    await getServices(base).thresholds.resetRules();
-    await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
+    setActionError(null);
+    try {
+      await getServices(base).thresholds.resetRules();
+      await qc.invalidateQueries({ queryKey: [base, "threshold-rules"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not restore defaults.");
+    }
   }
 
   return (
@@ -104,6 +120,17 @@ export function ThresholdsPage() {
           </div>
         }
       />
+
+      {actionError && (
+        <div className="px-4 pt-4">
+          <div
+            role="alert"
+            className="rounded-sm border border-risk-critical/50 bg-risk-critical/10 px-3 py-2 text-xs text-risk-critical"
+          >
+            {actionError}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="panel">

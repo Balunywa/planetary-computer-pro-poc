@@ -58,14 +58,50 @@ export class MockRiskEngineService implements RiskEngineService {
   }
 }
 
+const ALERT_STATUS_KEY = "ops-alert-status";
+
 export class MockAlertService implements AlertService {
   private alerts: OpsAlert[] = [...sampleAlerts];
+  private overrides: Record<string, OpsAlert["status"]> | null = null;
+
+  private loadOverrides(): Record<string, OpsAlert["status"]> {
+    if (this.overrides) return this.overrides;
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(ALERT_STATUS_KEY);
+        if (raw) {
+          this.overrides = JSON.parse(raw) as Record<string, OpsAlert["status"]>;
+          return this.overrides;
+        }
+      } catch {
+        /* fall through to empty */
+      }
+    }
+    this.overrides = {};
+    return this.overrides;
+  }
+
+  private persistOverrides(next: Record<string, OpsAlert["status"]>): void {
+    this.overrides = next;
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(ALERT_STATUS_KEY, JSON.stringify(next));
+      } catch {
+        /* storage unavailable — in-memory only */
+      }
+    }
+  }
+
   async listAlerts(): Promise<OpsAlert[]> {
-    return this.alerts;
+    const o = this.loadOverrides();
+    return this.alerts.map((a) => (o[a.id] ? { ...a, status: o[a.id]! } : a));
+  }
+  async listStatusOverrides(): Promise<Record<string, OpsAlert["status"]>> {
+    return this.loadOverrides();
   }
   async setStatus(id: string, status: OpsAlert["status"]): Promise<OpsAlert[]> {
-    this.alerts = this.alerts.map((a) => (a.id === id ? { ...a, status } : a));
-    return this.alerts;
+    this.persistOverrides({ ...this.loadOverrides(), [id]: status });
+    return this.listAlerts();
   }
 }
 
