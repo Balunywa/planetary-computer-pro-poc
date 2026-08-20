@@ -962,8 +962,8 @@ export default function GeoMap({
           </div>
         </div>
         <div className="pointer-events-none text-[9.5px] text-muted-foreground/70">
-          Basemap: {basemapProviderLabel} · Hazard layers: Planetary Computer Pro · Track:
-          Aurora/ECMWF cycle
+          Basemap: {basemapProviderLabel} · Hazard layers: Planetary Computer Pro · Track:{" "}
+          {event?.modelSource ?? "Aurora forecast cycle"}
         </div>
       </div>
     </div>

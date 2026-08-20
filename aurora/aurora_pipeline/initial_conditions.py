@@ -2,12 +2,16 @@
 
 Aurora needs a *history* of two consecutive 6-hourly states (t0-6h and t0) with
 surface variables, static variables, and five atmospheric variables on 13
-pressure levels. Three sources are supported:
+pressure levels. Four sources are supported:
 
 * ``hres_t0`` (default) — IFS HRES T0 pulled from the **public** WeatherBench2
   archive on Google Cloud (no credentials) with static variables from Aurora's
-  HuggingFace repository (no credentials). This is the correct pairing for the
-  fine-tuned checkpoint and needs no Copernicus/ECMWF account.
+  HuggingFace repository (no credentials). Correct pairing for the fine-tuned
+  checkpoint, but the archive only covers 2016-2022.
+* ``gfs`` — NOAA GFS 0.25-degree operational analysis from the **public** AWS
+  Open Data archive (anonymous, no credentials), refreshed every 6 hours and
+  available for the current date. Two consecutive f000 cycles form the history;
+  static variables come from Aurora's HuggingFace pickle (same 0.25-degree grid).
 * ``era5`` — downloaded from the Copernicus CDS. Requires a (free) CDS account
   and must be run against the *pretrained* checkpoint, per Aurora's guidance.
 * ``hres`` — read from local ECMWF HRES GRIB files (operational path).
@@ -19,7 +23,8 @@ from __future__ import annotations
 
 import pickle
 import tempfile
-from datetime import timedelta
+import urllib.request
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -68,6 +73,8 @@ _ERA5_ATMOS = {
 def build_initial_condition(config: Config) -> Batch:
     if config.initial_condition_source == "hres_t0":
         return _from_hres_t0_wb2(config)
+    if config.initial_condition_source == "gfs":
+        return _from_gfs(config)
     if config.initial_condition_source == "era5":
         return _from_era5(config)
     return _from_hres(config)
@@ -139,6 +146,227 @@ def _load_static_pickle(config: Config) -> dict:
             f"Static pickle {config.static_name} is missing variables {missing}."
         )
     return {key: torch.from_numpy(np.asarray(value)) for key, value in raw.items()}
+
+
+# ---------------------------------------------------------------------------
+# NOAA GFS 0.25 degree via public AWS Open Data — operational, real-time
+# ---------------------------------------------------------------------------
+
+# Standard gravity: GFS ships geopotential *height* (gh, metres); Aurora wants
+# geopotential (m^2 s^-2) = gh * g.
+_G0 = 9.80665
+
+# .idx variable/level labels selected out of the full GFS message list.
+_GFS_SURFACE_SELECT = {
+    ("TMP", "2 m above ground"): "2t",
+    ("UGRD", "10 m above ground"): "10u",
+    ("VGRD", "10 m above ground"): "10v",
+    ("PRMSL", "mean sea level"): "msl",
+}
+# Atmospheric fields to pull at each isobaric level (RH backs up SPFH up high).
+_GFS_ATMOS_VARS = {"TMP", "UGRD", "VGRD", "SPFH", "HGT", "RH"}
+
+
+def _from_gfs(config: Config) -> Batch:
+    t0 = config.analysis_time.replace(tzinfo=None)
+    t_prev = t0 - timedelta(hours=6)
+
+    prev = _gfs_state(config, t_prev)
+    curr = _gfs_state(config, t0)
+    if prev["lat"].shape != curr["lat"].shape or prev["lon"].shape != curr["lon"].shape:
+        raise SystemExit("GFS cycles t0-6h and t0 have mismatched grids.")
+
+    def surf(short: str) -> torch.Tensor:
+        stacked = np.stack([prev["surf"][short], curr["surf"][short]], axis=0)
+        return torch.from_numpy(stacked[None].astype("float32"))  # (1, 2, H, W)
+
+    def atm(short: str) -> torch.Tensor:
+        stacked = np.stack([prev["atmos"][short], curr["atmos"][short]], axis=0)
+        return torch.from_numpy(stacked[None].astype("float32"))  # (1, 2, 13, H, W)
+
+    static_vars = _load_static_pickle(config)
+
+    return Batch(
+        surf_vars={name: surf(name) for name in ("2t", "10u", "10v", "msl")},
+        static_vars=static_vars,
+        atmos_vars={name: atm(name) for name in ("t", "u", "v", "q", "z")},
+        metadata=Metadata(
+            lat=torch.from_numpy(curr["lat"].astype("float32")),
+            lon=torch.from_numpy(curr["lon"].astype("float32")),
+            time=(t0,),
+            atmos_levels=ATMOS_LEVELS,
+        ),
+    )
+
+
+def _gfs_state(config: Config, cycle: datetime) -> dict:
+    """Download and decode one GFS f000 analysis into plain numpy arrays."""
+    grib_path = _download_gfs_subset(config, cycle)
+    try:
+        h2 = _open_gfs(grib_path, {"typeOfLevel": "heightAboveGround", "level": 2})
+        h10 = _open_gfs(grib_path, {"typeOfLevel": "heightAboveGround", "level": 10})
+        msl = _open_gfs(grib_path, {"typeOfLevel": "meanSea"})
+
+        lat = np.asarray(msl["latitude"].values, dtype="float32")
+        lon = np.asarray(msl["longitude"].values, dtype="float32")
+
+        # Read each atmospheric field on its own so a variable that GFS ships on
+        # fewer levels (SPFH) cannot break the decode of the fully-levelled ones.
+        temperature = _iso_var(grib_path, "t")
+        u_wind = _iso_var(grib_path, "u")
+        v_wind = _iso_var(grib_path, "v")
+        geo_height = _iso_var(grib_path, "gh")
+        humidity = _gfs_specific_humidity(grib_path, temperature)
+
+        atmos = {
+            "t": temperature,
+            "u": u_wind,
+            "v": v_wind,
+            "q": humidity,
+            "z": geo_height * _G0,
+        }
+        for name in ("t", "u", "v", "z"):
+            if not np.isfinite(atmos[name]).all():
+                raise SystemExit(
+                    f"GFS cycle {cycle:%Y-%m-%d %H}Z is missing '{name}' on one of "
+                    f"the required levels {ATMOS_LEVELS}."
+                )
+
+        surf = {
+            "2t": np.asarray(h2["t2m"].values, dtype="float32"),
+            "10u": np.asarray(h10["u10"].values, dtype="float32"),
+            "10v": np.asarray(h10["v10"].values, dtype="float32"),
+            "msl": np.asarray(msl["prmsl"].values, dtype="float32"),
+        }
+        return {"lat": lat, "lon": lon, "surf": surf, "atmos": atmos}
+    finally:
+        Path(grib_path).unlink(missing_ok=True)
+
+
+def _iso_var(path: str, short: str) -> np.ndarray:
+    """One isobaric field reindexed onto Aurora's 13 levels (NaN where absent)."""
+    dataset = _open_gfs(path, {"typeOfLevel": "isobaricInhPa", "shortName": short})
+    dataset = dataset.reindex(isobaricInhPa=list(ATMOS_LEVELS))
+    return np.asarray(dataset[short].values, dtype="float32")  # (13, H, W)
+
+
+def _gfs_specific_humidity(grib_path: str, temperature: np.ndarray) -> np.ndarray:
+    """Specific humidity on the 13 levels.
+
+    GFS ships SPFH directly on the lower/mid levels but only relative humidity on
+    the highest ones. Where SPFH is absent, derive it from RH and temperature so
+    every value stays physically real rather than invented.
+    """
+    try:
+        q = _iso_var(grib_path, "q")
+    except SystemExit:
+        q = np.full(temperature.shape, np.nan, dtype="float32")
+
+    if not np.isfinite(q).all():
+        rh = _iso_var(grib_path, "r")  # relative humidity, %
+        levels = np.asarray(ATMOS_LEVELS, dtype="float32")
+        pressure = (levels * 100.0)[:, None, None]  # Pa
+        # Tetens saturation vapour pressure (over water), then mixing-ratio form.
+        e_sat = 611.2 * np.exp(17.67 * (temperature - 273.15) / (temperature - 29.65))
+        e = np.clip(rh, 0.0, 100.0) / 100.0 * e_sat
+        q_from_rh = ((0.622 * e) / (pressure - 0.378 * e)).astype("float32")
+        q = np.where(np.isfinite(q), q, q_from_rh)
+
+    q = np.where(np.isfinite(q), q, 1e-6).astype("float32")
+    return np.clip(q, 1e-9, None)
+
+
+def _open_gfs(path: str, filter_by_keys: dict) -> xr.Dataset:
+    try:
+        return xr.open_dataset(
+            path,
+            engine="cfgrib",
+            backend_kwargs={"filter_by_keys": filter_by_keys, "indexpath": ""},
+        )
+    except Exception as exc:  # noqa: BLE001 - GRIB decoding surfaces many error types
+        raise SystemExit(
+            f"Could not decode GFS GRIB with filter {filter_by_keys}: {exc}"
+        ) from exc
+
+
+def _download_gfs_subset(config: Config, cycle: datetime) -> str:
+    """Byte-range fetch only the messages Aurora needs into a local GRIB file."""
+    hh = f"{cycle.hour:02d}"
+    ymd = cycle.strftime("%Y%m%d")
+    fname = f"gfs.t{hh}z.pgrb2.0p25.f000"
+    base = config.gfs_base_url.rstrip("/")
+    # Layout gained an /atmos/ segment on 2021-03-22; try new then old.
+    candidates = [
+        f"{base}/gfs.{ymd}/{hh}/atmos/{fname}",
+        f"{base}/gfs.{ymd}/{hh}/{fname}",
+    ]
+    url = _first_reachable(candidates, cycle)
+    ranges = _select_gfs_ranges(_fetch_text(url + ".idx"), cycle)
+
+    fd, tmp = tempfile.mkstemp(prefix="aurora-gfs-", suffix=".grib2")
+    try:
+        with open(fd, "wb") as out:
+            for start, end in ranges:
+                out.write(_fetch_range(url, start, end))
+    except Exception:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return tmp
+
+
+def _select_gfs_ranges(idx_text: str, cycle: datetime) -> list[tuple[int, int | None]]:
+    parsed: list[tuple[int, str, str]] = []
+    for line in idx_text.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split(":")
+        if len(fields) < 5:
+            continue
+        parsed.append((int(fields[1]), fields[3], fields[4]))  # start, var, level
+
+    starts = [p[0] for p in parsed]
+    level_labels = {f"{lvl} mb": True for lvl in ATMOS_LEVELS}
+    selected: list[tuple[int, int | None]] = []
+    for i, (start, var, level) in enumerate(parsed):
+        keep = (var, level) in _GFS_SURFACE_SELECT or (
+            var in _GFS_ATMOS_VARS and level in level_labels
+        )
+        if keep:
+            end = starts[i + 1] - 1 if i + 1 < len(starts) else None
+            selected.append((start, end))
+    if not selected:
+        raise SystemExit(
+            f"GFS index for {cycle:%Y-%m-%d %H}Z matched no required messages; "
+            "the archive layout may have changed."
+        )
+    return selected
+
+
+def _first_reachable(urls: list[str], cycle: datetime) -> str:
+    for url in urls:
+        request = urllib.request.Request(url + ".idx", method="HEAD")
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                if response.status == 200:
+                    return url
+        except Exception:  # noqa: BLE001 - try the next candidate layout
+            continue
+    raise SystemExit(
+        f"No GFS f000 file found for {cycle:%Y-%m-%d %H}Z at {urls[0]} "
+        "(cycle may be too old for the 0.25-degree archive or not yet published)."
+    )
+
+
+def _fetch_text(url: str) -> str:
+    with urllib.request.urlopen(url, timeout=60) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def _fetch_range(url: str, start: int, end: int | None) -> bytes:
+    byte_range = f"bytes={start}-" + ("" if end is None else str(end))
+    request = urllib.request.Request(url, headers={"Range": byte_range})
+    with urllib.request.urlopen(request, timeout=300) as response:
+        return response.read()
 
 
 # ---------------------------------------------------------------------------

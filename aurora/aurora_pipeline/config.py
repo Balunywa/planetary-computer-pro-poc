@@ -25,14 +25,19 @@ SYNOPTIC_HOURS: tuple[int, ...] = (0, 6, 12, 18)
 
 # Public WeatherBench2 archive of IFS HRES T0 at 0.25 degrees (no credentials).
 DEFAULT_WB2_ZARR = "gs://weatherbench2/datasets/hres_t0/2016-2022-6h-1440x721.zarr"
+# Public NOAA GFS 0.25-degree archive on AWS Open Data (anonymous, no credentials).
+# Operational analyses/forecasts, refreshed every 6 h, back to 2021-02-26.
+DEFAULT_GFS_BASE_URL = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
 # Aurora's own static variables, hosted on HuggingFace (no credentials).
 DEFAULT_STATIC_REPO = "microsoft/aurora"
 DEFAULT_STATIC_NAME = "aurora-0.25-static.pickle"
 
 # Which checkpoint each initial-condition source is valid for. The fine-tuned
-# model is only accurate on IFS HRES T0; ERA5 must use the pretrained model.
+# model is only accurate on operational analyses (IFS HRES T0 / NOAA GFS); ERA5
+# must use the pretrained model.
 _MODEL_FOR_SOURCE = {
     "hres_t0": "aurora-0.25-finetuned",
+    "gfs": "aurora-0.25-finetuned",
     "hres": "aurora-0.25-finetuned",
     "era5": "aurora-0.25-pretrained",
 }
@@ -70,6 +75,7 @@ class Config:
     initial_condition_source: str
     hres_input_dir: str | None
     wb2_zarr_url: str
+    gfs_base_url: str
     static_repo: str
     static_name: str
     analysis_time: datetime
@@ -134,7 +140,8 @@ def load_config() -> Config:
     if source not in _MODEL_FOR_SOURCE:
         raise SystemExit(
             "INITIAL_CONDITION_SOURCE must be 'hres_t0' (default, public "
-            "WeatherBench2), 'hres' (local GRIB), or 'era5' (Copernicus CDS)."
+            "WeatherBench2), 'gfs' (public NOAA GFS, operational/real-time), "
+            "'hres' (local GRIB), or 'era5' (Copernicus CDS)."
         )
 
     hres_dir = os.environ.get("HRES_INPUT_DIR", "").strip() or None
@@ -188,6 +195,7 @@ def load_config() -> Config:
         initial_condition_source=source,
         hres_input_dir=hres_dir,
         wb2_zarr_url=os.environ.get("AURORA_WB2_ZARR_URL", "").strip() or DEFAULT_WB2_ZARR,
+        gfs_base_url=os.environ.get("AURORA_GFS_BASE_URL", "").strip() or DEFAULT_GFS_BASE_URL,
         static_repo=os.environ.get("AURORA_STATIC_REPO", "").strip() or DEFAULT_STATIC_REPO,
         static_name=os.environ.get("AURORA_STATIC_NAME", "").strip() or DEFAULT_STATIC_NAME,
         analysis_time=analysis_time,
