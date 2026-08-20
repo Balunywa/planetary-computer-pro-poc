@@ -212,26 +212,59 @@ export const getDataPlaneStatus = createServerFn({ method: "GET" }).handler(
 
 const WEATHER_EVENTS_BLOB_NAME = "weather-events.json";
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isCoordinate(lat: unknown, lon: unknown): lat is number {
+  return (
+    isFiniteNumber(lat) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    isFiniteNumber(lon) &&
+    lon >= -180 &&
+    lon <= 180
+  );
+}
+
 function isWeatherEvent(value: unknown): value is WeatherEvent {
   if (!value || typeof value !== "object") return false;
   const event = value as Partial<WeatherEvent>;
   return (
     typeof event.id === "string" &&
     typeof event.name === "string" &&
-    typeof event.lat === "number" &&
-    Number.isFinite(event.lat) &&
-    typeof event.lon === "number" &&
-    Number.isFinite(event.lon) &&
+    ["hurricane", "tropical_storm", "severe_convective", "flood"].includes(event.kind ?? "") &&
+    typeof event.status === "string" &&
+    typeof event.basin === "string" &&
+    isFiniteNumber(event.currentCategory) &&
+    isFiniteNumber(event.currentWindMph) &&
+    isFiniteNumber(event.gustMph) &&
+    isFiniteNumber(event.pressureMb) &&
+    isFiniteNumber(event.movementDeg) &&
+    isFiniteNumber(event.movementMph) &&
+    isCoordinate(event.lat, event.lon) &&
+    ["low", "moderate", "high"].includes(event.confidence ?? "") &&
+    typeof event.modelSource === "string" &&
+    typeof event.updatedAtIso === "string" &&
+    typeof event.expectedLandfall === "string" &&
     Array.isArray(event.history) &&
+    event.history.every(
+      (position) =>
+        Array.isArray(position) && position.length === 2 && isCoordinate(position[1], position[0]),
+    ) &&
     Array.isArray(event.forecast) &&
     event.forecast.length > 0 &&
     event.forecast.every(
-      (point) =>
-        typeof point?.hour === "number" &&
-        typeof point.lat === "number" &&
-        typeof point.lon === "number" &&
-        typeof point.windMph === "number" &&
-        typeof point.pressureMb === "number",
+      (point, index) =>
+        isFiniteNumber(point?.hour) &&
+        point.hour >= 0 &&
+        (index === 0 || point.hour > event.forecast![index - 1]!.hour) &&
+        isCoordinate(point.lat, point.lon) &&
+        isFiniteNumber(point.windMph) &&
+        isFiniteNumber(point.coneRadiusMi) &&
+        point.coneRadiusMi >= 0 &&
+        isFiniteNumber(point.category) &&
+        isFiniteNumber(point.pressureMb),
     )
   );
 }

@@ -94,11 +94,17 @@ export function useOpsSnapshot(base: OpsBase, horizonHours = 72): OpsSnapshot {
       .filter((x) => x.hoursToImpact !== null && x.level !== "normal")
       .map((x) => x.hoursToImpact!)
       .sort((x, y) => x - y);
+    const highestRisk = r.reduce<AssetRisk | undefined>(
+      (highest, risk) => (!highest || risk.score > highest.score ? risk : highest),
+      undefined,
+    );
+    const primaryEvent =
+      events.data?.find((event) => event.id === highestRisk?.eventId) ?? events.data?.[0];
     return {
       assets: a,
       risks: r,
       riskMap,
-      event: events.data?.[0],
+      event: primaryEvent,
       isLoading: assets.isLoading || risks.isLoading || events.isLoading,
       metrics: {
         monitored: a.length,

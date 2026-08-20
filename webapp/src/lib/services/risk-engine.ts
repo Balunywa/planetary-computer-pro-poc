@@ -11,7 +11,7 @@ export function haversineMi(aLat: number, aLon: number, bLat: number, bLon: numb
   const h =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
-  return 2 * EARTH_MI * Math.asin(Math.sqrt(h));
+  return 2 * EARTH_MI * Math.asin(Math.sqrt(Math.min(1, Math.max(0, h))));
 }
 
 export interface TrackProximity {
@@ -50,7 +50,7 @@ export function trackProximity(asset: Asset, event: WeatherEvent, maxHour = 120)
           distanceMi: d,
           hoursToImpact: s.hour,
           nearest: { ...s.base, hour: Math.round(s.hour) },
-          insideCone: d <= Math.min(Math.max(cone, 25), 60),
+          insideCone: d <= Math.max(cone, 25),
         };
       }
     }

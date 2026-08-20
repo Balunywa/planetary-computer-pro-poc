@@ -27,6 +27,7 @@ import type {
   ThresholdService,
   WeatherService,
 } from "@/lib/services/interfaces";
+import { derivePosture } from "@/lib/services/posture";
 import { scoreAsset } from "@/lib/services/risk-engine";
 import {
   askFoundryCopilot,
@@ -84,18 +85,30 @@ export class AzureWeatherService implements WeatherService {
   }
 }
 
+function highestRiskFor(
+  asset: Asset,
+  events: WeatherEvent[],
+  horizonHours: number,
+): AssetRisk | null {
+  if (events.length === 0) return null;
+  return events
+    .map((event) => scoreAsset(asset, event, horizonHours))
+    .reduce((highest, risk) => (risk.score > highest.score ? risk : highest));
+}
+
 /** Risk is computed from the tenant's real assets and forecasts; no assets → no risks. */
 export class AzureRiskEngineService implements RiskEngineService {
   async scoreEstate(horizonHours = 120): Promise<AssetRisk[]> {
     const [assets, events] = await Promise.all([listUploadedAssets(), listAuroraWeatherEvents()]);
-    const event = events[0];
-    return event ? assets.map((asset) => scoreAsset(asset, event, horizonHours)) : [];
+    return assets.flatMap((asset) => {
+      const risk = highestRiskFor(asset, events, horizonHours);
+      return risk ? [risk] : [];
+    });
   }
   async scoreOne(assetId: string, horizonHours = 120): Promise<AssetRisk | null> {
     const [assets, events] = await Promise.all([listUploadedAssets(), listAuroraWeatherEvents()]);
     const asset = assets.find((candidate) => candidate.id === assetId);
-    const event = events[0];
-    return asset && event ? scoreAsset(asset, event, horizonHours) : null;
+    return asset ? highestRiskFor(asset, events, horizonHours) : null;
   }
 }
 
@@ -109,19 +122,39 @@ export class AzureAlertService implements AlertService {
   }
 }
 
-/** Response posture derives from real exposure; empty until assets exist. */
+/** Response posture derives from real exposure, with process-local operator overrides. */
 export class AzurePostureService implements PostureService {
+  private gateOverrides = new Map<string, Partial<Record<GateId, GateState>>>();
+  private statusOverrides = new Map<string, OperatingStatus>();
+
+  private async build(): Promise<AssetPosture[]> {
+    const [assets, events] = await Promise.all([listUploadedAssets(), listAuroraWeatherEvents()]);
+    return assets.map((asset) => {
+      const base = derivePosture(asset, highestRiskFor(asset, events, 120) ?? undefined);
+      return {
+        ...base,
+        gates: { ...base.gates, ...(this.gateOverrides.get(asset.id) ?? {}) },
+        productionStatus: this.statusOverrides.get(asset.id) ?? base.productionStatus,
+      };
+    });
+  }
+
   async listPostures(): Promise<AssetPosture[]> {
-    return [];
+    return this.build();
   }
-  async setGate(_assetId: string, _gate: GateId, _state: GateState): Promise<AssetPosture[]> {
-    return [];
+  async setGate(assetId: string, gate: GateId, state: GateState): Promise<AssetPosture[]> {
+    const current = this.gateOverrides.get(assetId) ?? {};
+    this.gateOverrides.set(assetId, { ...current, [gate]: state });
+    return this.build();
   }
-  async setProductionStatus(_assetId: string, _status: OperatingStatus): Promise<AssetPosture[]> {
-    return [];
+  async setProductionStatus(assetId: string, status: OperatingStatus): Promise<AssetPosture[]> {
+    this.statusOverrides.set(assetId, status);
+    return this.build();
   }
   async resetOverrides(): Promise<AssetPosture[]> {
-    return [];
+    this.gateOverrides.clear();
+    this.statusOverrides.clear();
+    return this.build();
   }
 }
 
@@ -144,8 +177,9 @@ export class AzureThresholdService implements ThresholdService {
   }
 
   private async persist(rules: ThresholdRule[]): Promise<ThresholdRule[]> {
+    const result = await saveThresholdRules({ data: { rules } });
+    if (!result.ok) throw new Error(result.message);
     this.rules = rules;
-    await saveThresholdRules({ data: { rules } });
     return rules;
   }
 
