@@ -181,6 +181,19 @@ export default function GeoMap({
     }),
     [catalogLayers, layers],
   );
+  const catalogBounds = useMemo<[[number, number], [number, number]] | null>(() => {
+    const boxes = catalogData.features
+      .map((item) => item.bbox)
+      .filter((bbox): bbox is number[] => !!bbox && bbox.length >= 4);
+    if (boxes.length === 0) return null;
+    return [
+      [Math.min(...boxes.map((bbox) => bbox[0]!)), Math.min(...boxes.map((bbox) => bbox[1]!))],
+      [Math.max(...boxes.map((bbox) => bbox[2]!)), Math.max(...boxes.map((bbox) => bbox[3]!))],
+    ];
+  }, [catalogData]);
+  const defaultBoundsRef = useRef(GULF_BOUNDS);
+  defaultBoundsRef.current =
+    !event && assets.length === 0 && catalogBounds ? catalogBounds : GULF_BOUNDS;
 
   // ---------------------------------------------------------------- sources
   const assetPoints: FeatureCollection = useMemo(() => {
@@ -362,13 +375,13 @@ export default function GeoMap({
     const map = new maplibregl.Map({
       container,
       style: basemapStyle(activeBasemap),
-      bounds: GULF_BOUNDS,
-      fitBoundsOptions: { padding: 24 },
+      bounds: defaultBoundsRef.current,
+      fitBoundsOptions: { padding: 56 },
       attributionControl: false,
       dragRotate: false,
       maxZoom: 12,
       minZoom: 3,
-      preserveDrawingBuffer: true,
+      canvasContextAttributes: { preserveDrawingBuffer: true },
     });
     map.getCanvasContainer().style.height = "100%";
     map.touchZoomRotate.disableRotation();
@@ -385,7 +398,8 @@ export default function GeoMap({
       // the container may have been zero-sized or mid-layout at construction,
       // which leaves the initial fit pointing somewhere other than the Gulf.
       map.resize();
-      if (!userMovedRef.current) map.fitBounds(GULF_BOUNDS, { padding: 24, animate: false });
+      if (!userMovedRef.current)
+        map.fitBounds(defaultBoundsRef.current, { padding: 56, animate: false });
     });
 
     // any user-initiated pan/zoom stops the automatic refit
@@ -399,7 +413,8 @@ export default function GeoMap({
     const ro = new ResizeObserver(() => {
       if (!mapRef.current) return;
       map.resize();
-      if (!userMovedRef.current) map.fitBounds(GULF_BOUNDS, { padding: 24, animate: false });
+      if (!userMovedRef.current)
+        map.fitBounds(defaultBoundsRef.current, { padding: 56, animate: false });
     });
     ro.observe(container);
 
@@ -804,7 +819,7 @@ export default function GeoMap({
 
   const resetView = () => {
     userMovedRef.current = false;
-    mapRef.current?.fitBounds(GULF_BOUNDS, { padding: 24, duration: 600 });
+    mapRef.current?.fitBounds(defaultBoundsRef.current, { padding: 56, duration: 600 });
   };
 
   return (
