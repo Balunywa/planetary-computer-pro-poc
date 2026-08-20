@@ -82,6 +82,11 @@ class Config:
 
     detection_bbox: BBox
 
+    # Optional operator-supplied names for detected systems, in intensity order
+    # (strongest first). Aurora only detects systems by genesis, so any official
+    # name is a label the operator attaches, not something the model infers.
+    storm_names: tuple[str, ...]
+
     output_container_url: str | None
     output_sas_url: str | None
     output_blob_name: str
@@ -200,6 +205,9 @@ def load_config() -> Config:
         static_name=os.environ.get("AURORA_STATIC_NAME", "").strip() or DEFAULT_STATIC_NAME,
         analysis_time=analysis_time,
         detection_bbox=_parse_bbox(os.environ.get("DETECTION_BBOX", "-100,15,-70,35")),
+        storm_names=tuple(
+            n.strip() for n in os.environ.get("STORM_NAMES", "").split(",") if n.strip()
+        ),
         output_container_url=output_container,
         output_sas_url=output_sas,
         output_blob_name=os.environ.get("OUTPUT_BLOB_NAME", "weather-events.json").strip(),

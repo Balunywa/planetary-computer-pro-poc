@@ -37,10 +37,15 @@ def _to_event(config: Config, track: Track, index: int) -> dict:
     movement_deg, movement_mph = _movement(track)
     stamp = config.analysis_time
     event_id = f"aurora-{stamp:%Y%m%dT%H}-{index}"
+    name = (
+        config.storm_names[index - 1]
+        if index - 1 < len(config.storm_names)
+        else f"Aurora system {index}"
+    )
 
     return {
         "id": event_id,
-        "name": f"Aurora system {index}",
+        "name": name,
         "kind": "hurricane" if peak_wind_mph >= 74 else "tropical_storm",
         "status": _status(current_wind_mph),
         "basin": _basin(current.lon),
