@@ -53,6 +53,17 @@ def detect_seeds(config: Config, initial_condition: Batch):
     return find_centres(field, config.detection_bbox)
 
 
+def _endpoint_token(config: Config) -> str:
+    """Return the endpoint bearer token, minting one from the managed identity when
+    AURORA_ENDPOINT_TOKEN is not set (the scheduled Container Apps Job path)."""
+    if config.endpoint_token:
+        return config.endpoint_token
+    from azure.identity import DefaultAzureCredential
+
+    log.info("No AURORA_ENDPOINT_TOKEN set; acquiring an AAD token via managed identity.")
+    return DefaultAzureCredential().get_token("https://ml.azure.com/.default").token
+
+
 def run_and_track(config: Config, initial_condition: Batch, seeds) -> list:
     """Submit the forecast and propagate each seed with ``aurora.Tracker``.
 
@@ -79,7 +90,7 @@ def run_and_track(config: Config, initial_condition: Batch, seeds) -> list:
     ]
     active = list(range(len(trackers)))
 
-    foundry_client = FoundryClient(endpoint=config.endpoint, token=config.endpoint_token)
+    foundry_client = FoundryClient(endpoint=config.endpoint, token=_endpoint_token(config))
     channel = BlobStorageChannel(resolve_channel_url(config))
 
     for prediction in submit(

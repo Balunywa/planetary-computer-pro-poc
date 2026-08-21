@@ -81,6 +81,15 @@ param auroraInstanceType string = 'Standard_NC24ads_A100_v4'
 @description('Registry model asset ID for the Aurora managed-compute deployment. The official Microsoft storm-impact app uses azureml://registries/azureml/models/Aurora/versions/4. Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms).')
 param auroraModelAssetId string = ''
 
+@description('Deploy a scheduled Azure Container Apps Job that runs the Aurora forecast pipeline on the ECMWF cycle cadence (00/06/12/18 UTC), publishing weather-events.json to the model-outputs container so the map stays live without manual runs. Requires the Aurora weather model (for the GPU endpoint) and sample storage, plus a prebuilt pipeline image.')
+param deployAuroraSchedule bool = false
+
+@description('Container image for the Aurora forecast pipeline job, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Build and push it first with `az acr build -r <registry> -t aurora-pipeline:latest aurora`. The scheduled job deploys only when this is supplied (an empty value provisions nothing).')
+param auroraJobImage string = ''
+
+@description('Cron schedule (UTC) for the Aurora forecast job. The default runs ~1 h after each synoptic cycle (00/06/12/18 UTC) to allow for input-data latency.')
+param auroraJobCron string = '0 1,7,13,19 * * *'
+
 // ------------------------------------------------------------------------------------
 // Variables
 // ------------------------------------------------------------------------------------
@@ -139,6 +148,20 @@ var azureMLDataScientistRoleId = 'f6c7c914-8db3-469d-8ca1-694a8f32e121'
 // The GPU model deployment only runs when a model asset ID is supplied (it needs GPU
 // quota + accepted marketplace terms); otherwise just the workspace + endpoint deploy.
 var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
+
+// Scheduled Aurora forecast job (Azure Container Apps Job). It needs the GPU endpoint
+// to call and the sample storage account for its scratch channel + published output, so
+// it deploys only when those are present and a pipeline image is supplied.
+var containerAppsEnvName = '${namePrefix}-cae-${amlSuffix}'
+var logAnalyticsName = '${namePrefix}-logs-${amlSuffix}'
+var auroraJobName = '${namePrefix}-aurora-job-${amlSuffix}'
+var auroraJobIdentityName = '${namePrefix}-aurora-job-identity'
+// Scratch container the Aurora endpoint streams tensors through (the blob "channel").
+var auroraChannelContainerName = 'aurora-channel'
+var deployAuroraJob = deployAuroraSchedule && !empty(auroraJobImage) && deployAuroraModel && deploySampleStorage
+// Configure image pull with the job's managed identity when the image lives in an ACR.
+var auroraJobUsesAcr = deployAuroraJob && contains(auroraJobImage, '.azurecr.io')
+var auroraJobRegistryServer = auroraJobUsesAcr ? split(auroraJobImage, '/')[0] : ''
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -201,6 +224,16 @@ resource sampleContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
 resource modelOutputsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = if (deploySampleStorage) {
   parent: sampleBlobService
   name: modelOutputsContainerName
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// Scratch container the Aurora endpoint streams initial conditions and predictions
+// through (the blob "channel"). Only needed when the scheduled forecast job is deployed.
+resource auroraChannelContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = if (deployAuroraJob) {
+  parent: sampleBlobService
+  name: auroraChannelContainerName
   properties: {
     publicAccess: 'None'
   }
@@ -395,6 +428,151 @@ resource auroraDeployment 'Microsoft.MachineLearningServices/workspaces/onlineEn
 }
 
 // ------------------------------------------------------------------------------------
+// Optional: scheduled Aurora forecast job on an Azure Container Apps Job. This is the
+// production "make it live" trigger — a light CPU job that runs the pipeline
+// (build initial conditions → call the Aurora GPU endpoint → track → publish
+// weather-events.json) on the ECMWF cycle cadence. The GPU stays in the standing Foundry
+// endpoint (as the Aurora Foundry docs assume); this job is just the scheduled client.
+// It authenticates to the endpoint and storage with its own managed identity (no keys).
+// ------------------------------------------------------------------------------------
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = if (deployAuroraJob) {
+  name: logAnalyticsName
+  location: location
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 30
+  }
+}
+
+resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = if (deployAuroraJob) {
+  name: containerAppsEnvName
+  location: location
+  properties: {
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: deployAuroraJob ? logAnalytics.properties.customerId : ''
+        sharedKey: deployAuroraJob ? logAnalytics.listKeys().primarySharedKey : ''
+      }
+    }
+  }
+}
+
+resource auroraJobIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (deployAuroraJob) {
+  name: auroraJobIdentityName
+  location: location
+}
+
+// The job writes its scratch channel SAS and the published weather-events.json to the
+// sample storage account, so it needs Storage Blob Data Contributor there.
+resource auroraJobBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAuroraJob) {
+  name: guid(sampleStorage.id, auroraJobIdentityName, storageBlobDataContributorRoleId)
+  scope: sampleStorage
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalId: deployAuroraJob ? auroraJobIdentity.properties.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// The job invokes the Aurora online endpoint and mints its AAD token via managed
+// identity, so it needs AzureML Data Scientist on the workspace (same as the web app).
+resource auroraJobMlRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAuroraJob) {
+  name: guid(amlWorkspace.id, auroraJobIdentityName, azureMLDataScientistRoleId)
+  scope: amlWorkspace
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureMLDataScientistRoleId)
+    principalId: deployAuroraJob ? auroraJobIdentity.properties.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource auroraJob 'Microsoft.App/jobs@2024-03-01' = if (deployAuroraJob) {
+  name: auroraJobName
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${auroraJobIdentity.id}': {}
+    }
+  }
+  properties: {
+    environmentId: containerAppsEnv.id
+    configuration: {
+      triggerType: 'Schedule'
+      replicaTimeout: 3600
+      replicaRetryLimit: 1
+      scheduleTriggerConfig: {
+        cronExpression: auroraJobCron
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      registries: auroraJobUsesAcr ? [
+        {
+          server: auroraJobRegistryServer
+          identity: auroraJobIdentity.id
+        }
+      ] : []
+    }
+    template: {
+      containers: [
+        {
+          name: 'aurora-pipeline'
+          image: auroraJobImage
+          resources: {
+            cpu: json('4.0')
+            memory: '8Gi'
+          }
+          env: [
+            // Selects the job's user-assigned identity for DefaultAzureCredential.
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: deployAuroraJob ? auroraJobIdentity.properties.clientId : ''
+            }
+            {
+              name: 'AURORA_ENDPOINT'
+              value: deployAuroraModel ? auroraEndpoint.properties.scoringUri : ''
+            }
+            // Public, real-time NOAA GFS initial conditions (no credentials). With no
+            // ANALYSIS_TIME set, the pipeline targets the latest available synoptic cycle.
+            {
+              name: 'INITIAL_CONDITION_SOURCE'
+              value: 'gfs'
+            }
+            {
+              name: 'AURORA_NUM_STEPS'
+              value: '20'
+            }
+            {
+              name: 'DETECTION_BBOX'
+              value: '-100,15,-70,35'
+            }
+            {
+              name: 'AURORA_BLOB_ACCOUNT_URL'
+              value: deploySampleStorage ? sampleStorage.properties.primaryEndpoints.blob : ''
+            }
+            {
+              name: 'AURORA_BLOB_CONTAINER'
+              value: auroraChannelContainerName
+            }
+            {
+              name: 'OUTPUT_CONTAINER_URL'
+              value: deploySampleStorage ? '${sampleStorage.properties.primaryEndpoints.blob}${modelOutputsContainerName}' : ''
+            }
+            {
+              name: 'OUTPUT_BLOB_NAME'
+              value: 'weather-events.json'
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------
 // Microsoft Entra app registration for MSAL sign-in.
 // Created with the Microsoft Graph Bicep extension, which runs as the identity that
 // launches the deployment — so anyone with rights to register apps (Application
@@ -546,6 +724,13 @@ output aiAgentDeployment string = deployAiAgent ? openAiDeploymentName : 'not-de
 output auroraWorkspace string = deployAuroraModel ? amlWorkspaceName : 'not-deployed'
 output auroraEndpoint string = deployAuroraModel ? auroraEndpointName : 'not-deployed'
 output auroraModelDeployed bool = deployAuroraDeployment
+@description('Whether the scheduled Aurora forecast job (Container Apps Job) was deployed. Requires the Aurora model + sample storage components and a supplied pipeline image.')
+output auroraScheduleDeployed bool = deployAuroraJob
+output auroraJobName string = deployAuroraJob ? auroraJobName : 'not-deployed'
+@description('Cron schedule (UTC) the Aurora forecast job runs on.')
+output auroraJobSchedule string = deployAuroraJob ? auroraJobCron : 'not-deployed'
+@description('Principal (object) ID of the Aurora job managed identity. Grant it AcrPull on your container registry so the job can pull its image.')
+output auroraJobIdentityPrincipalId string = deployAuroraJob ? auroraJobIdentity.properties.principalId : 'not-deployed'
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
 output webAppName string = deployWebApp ? webAppName : 'not-deployed'

@@ -62,6 +62,8 @@ class BBox:
 @dataclass(frozen=True)
 class Config:
     endpoint: str
+    # Endpoint bearer token. Empty means "acquire one from the managed identity"
+    # (the scheduled-job path); a non-empty value is used as-is (local/manual runs).
     endpoint_token: str
     model_name: str
     num_steps: int
@@ -191,7 +193,7 @@ def load_config() -> Config:
 
     return Config(
         endpoint=_require("AURORA_ENDPOINT"),
-        endpoint_token=_require("AURORA_ENDPOINT_TOKEN"),
+        endpoint_token=os.environ.get("AURORA_ENDPOINT_TOKEN", "").strip(),
         model_name=model_name,
         num_steps=num_steps,
         blob_channel_url=blob_channel_url,

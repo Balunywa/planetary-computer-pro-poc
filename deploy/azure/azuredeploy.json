@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "10391898500307840860"
+      "templateHash": "6756084640541049211"
     }
   },
   "parameters": {
@@ -146,6 +146,27 @@
       "metadata": {
         "description": "Registry model asset ID for the Aurora managed-compute deployment. The official Microsoft storm-impact app uses azureml://registries/azureml/models/Aurora/versions/4. Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms)."
       }
+    },
+    "deployAuroraSchedule": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy a scheduled Azure Container Apps Job that runs the Aurora forecast pipeline on the ECMWF cycle cadence (00/06/12/18 UTC), publishing weather-events.json to the model-outputs container so the map stays live without manual runs. Requires the Aurora weather model (for the GPU endpoint) and sample storage, plus a prebuilt pipeline image."
+      }
+    },
+    "auroraJobImage": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Container image for the Aurora forecast pipeline job, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Build and push it first with `az acr build -r <registry> -t aurora-pipeline:latest aurora`. The scheduled job deploys only when this is supplied (an empty value provisions nothing)."
+      }
+    },
+    "auroraJobCron": {
+      "type": "string",
+      "defaultValue": "0 1,7,13,19 * * *",
+      "metadata": {
+        "description": "Cron schedule (UTC) for the Aurora forecast job. The default runs ~1 h after each synoptic cycle (00/06/12/18 UTC) to allow for input-data latency."
+      }
     }
   },
   "variables": {
@@ -173,7 +194,15 @@
     "auroraEndpointName": "[format('aurora-{0}', variables('amlSuffix'))]",
     "auroraDeploymentName": "aurora",
     "azureMLDataScientistRoleId": "f6c7c914-8db3-469d-8ca1-694a8f32e121",
-    "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]"
+    "deployAuroraDeployment": "[and(parameters('deployAuroraModel'), not(empty(parameters('auroraModelAssetId'))))]",
+    "containerAppsEnvName": "[format('{0}-cae-{1}', variables('namePrefix'), variables('amlSuffix'))]",
+    "logAnalyticsName": "[format('{0}-logs-{1}', variables('namePrefix'), variables('amlSuffix'))]",
+    "auroraJobName": "[format('{0}-aurora-job-{1}', variables('namePrefix'), variables('amlSuffix'))]",
+    "auroraJobIdentityName": "[format('{0}-aurora-job-identity', variables('namePrefix'))]",
+    "auroraChannelContainerName": "aurora-channel",
+    "deployAuroraJob": "[and(and(and(parameters('deployAuroraSchedule'), not(empty(parameters('auroraJobImage')))), parameters('deployAuroraModel')), parameters('deploySampleStorage'))]",
+    "auroraJobUsesAcr": "[and(variables('deployAuroraJob'), contains(parameters('auroraJobImage'), '.azurecr.io'))]",
+    "auroraJobRegistryServer": "[if(variables('auroraJobUsesAcr'), split(parameters('auroraJobImage'), '/')[0], '')]"
   },
   "imports": {
     "microsoftGraphV1": {
@@ -244,6 +273,18 @@
       "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
       "apiVersion": "2023-05-01",
       "name": "[format('{0}/{1}/{2}', variables('sampleStorageName'), 'default', variables('modelOutputsContainerName'))]",
+      "properties": {
+        "publicAccess": "None"
+      },
+      "dependsOn": [
+        "sampleBlobService"
+      ]
+    },
+    "auroraChannelContainer": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('sampleStorageName'), 'default', variables('auroraChannelContainerName'))]",
       "properties": {
         "publicAccess": "None"
       },
@@ -481,6 +522,160 @@
         "auroraEndpoint"
       ]
     },
+    "logAnalytics": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('logAnalyticsName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
+      }
+    },
+    "containerAppsEnv": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('containerAppsEnvName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[if(variables('deployAuroraJob'), reference('logAnalytics').customerId, '')]",
+            "sharedKey": "[if(variables('deployAuroraJob'), listKeys('logAnalytics', '2023-09-01').primarySharedKey, '')]"
+          }
+        }
+      },
+      "dependsOn": [
+        "logAnalytics"
+      ]
+    },
+    "auroraJobIdentity": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('auroraJobIdentityName')]",
+      "location": "[parameters('location')]"
+    },
+    "auroraJobBlobRole": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sampleStorageName')), variables('auroraJobIdentityName'), variables('storageBlobDataContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
+        "principalId": "[if(variables('deployAuroraJob'), reference('auroraJobIdentity').principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "auroraJobIdentity",
+        "sampleStorage"
+      ]
+    },
+    "auroraJobMlRole": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.MachineLearningServices/workspaces', variables('amlWorkspaceName'))]",
+      "name": "[guid(resourceId('Microsoft.MachineLearningServices/workspaces', variables('amlWorkspaceName')), variables('auroraJobIdentityName'), variables('azureMLDataScientistRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('azureMLDataScientistRoleId'))]",
+        "principalId": "[if(variables('deployAuroraJob'), reference('auroraJobIdentity').principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "amlWorkspace",
+        "auroraJobIdentity"
+      ]
+    },
+    "auroraJob": {
+      "condition": "[variables('deployAuroraJob')]",
+      "type": "Microsoft.App/jobs",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('auroraJobName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('auroraJobIdentityName')))]": {}
+        }
+      },
+      "properties": {
+        "environmentId": "[resourceId('Microsoft.App/managedEnvironments', variables('containerAppsEnvName'))]",
+        "configuration": {
+          "triggerType": "Schedule",
+          "replicaTimeout": 3600,
+          "replicaRetryLimit": 1,
+          "scheduleTriggerConfig": {
+            "cronExpression": "[parameters('auroraJobCron')]",
+            "parallelism": 1,
+            "replicaCompletionCount": 1
+          },
+          "registries": "[if(variables('auroraJobUsesAcr'), createArray(createObject('server', variables('auroraJobRegistryServer'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('auroraJobIdentityName')))), createArray())]"
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "aurora-pipeline",
+              "image": "[parameters('auroraJobImage')]",
+              "resources": {
+                "cpu": "[json('4.0')]",
+                "memory": "8Gi"
+              },
+              "env": [
+                {
+                  "name": "AZURE_CLIENT_ID",
+                  "value": "[if(variables('deployAuroraJob'), reference('auroraJobIdentity').clientId, '')]"
+                },
+                {
+                  "name": "AURORA_ENDPOINT",
+                  "value": "[if(parameters('deployAuroraModel'), reference('auroraEndpoint').scoringUri, '')]"
+                },
+                {
+                  "name": "INITIAL_CONDITION_SOURCE",
+                  "value": "gfs"
+                },
+                {
+                  "name": "AURORA_NUM_STEPS",
+                  "value": "20"
+                },
+                {
+                  "name": "DETECTION_BBOX",
+                  "value": "-100,15,-70,35"
+                },
+                {
+                  "name": "AURORA_BLOB_ACCOUNT_URL",
+                  "value": "[if(parameters('deploySampleStorage'), reference('sampleStorage').primaryEndpoints.blob, '')]"
+                },
+                {
+                  "name": "AURORA_BLOB_CONTAINER",
+                  "value": "[variables('auroraChannelContainerName')]"
+                },
+                {
+                  "name": "OUTPUT_CONTAINER_URL",
+                  "value": "[if(parameters('deploySampleStorage'), format('{0}{1}', reference('sampleStorage').primaryEndpoints.blob, variables('modelOutputsContainerName')), '')]"
+                },
+                {
+                  "name": "OUTPUT_BLOB_NAME",
+                  "value": "weather-events.json"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "auroraEndpoint",
+        "auroraJobIdentity",
+        "containerAppsEnv",
+        "sampleStorage"
+      ]
+    },
     "entraApp": {
       "condition": "[variables('registerEntraApp')]",
       "import": "microsoftGraphV1",
@@ -677,6 +872,31 @@
     "auroraModelDeployed": {
       "type": "bool",
       "value": "[variables('deployAuroraDeployment')]"
+    },
+    "auroraScheduleDeployed": {
+      "type": "bool",
+      "metadata": {
+        "description": "Whether the scheduled Aurora forecast job (Container Apps Job) was deployed. Requires the Aurora model + sample storage components and a supplied pipeline image."
+      },
+      "value": "[variables('deployAuroraJob')]"
+    },
+    "auroraJobName": {
+      "type": "string",
+      "value": "[if(variables('deployAuroraJob'), variables('auroraJobName'), 'not-deployed')]"
+    },
+    "auroraJobSchedule": {
+      "type": "string",
+      "metadata": {
+        "description": "Cron schedule (UTC) the Aurora forecast job runs on."
+      },
+      "value": "[if(variables('deployAuroraJob'), parameters('auroraJobCron'), 'not-deployed')]"
+    },
+    "auroraJobIdentityPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Principal (object) ID of the Aurora job managed identity. Grant it AcrPull on your container registry so the job can pull its image."
+      },
+      "value": "[if(variables('deployAuroraJob'), reference('auroraJobIdentity').principalId, 'not-deployed')]"
     },
     "ingestIdentityClientId": {
       "type": "string",
