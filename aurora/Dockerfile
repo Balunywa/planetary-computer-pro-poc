@@ -14,10 +14,14 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install the CPU build of PyTorch first (the model runs on the endpoint's GPU, not
-# here) so the image stays small, then the rest of the pipeline's dependencies.
+# Install the CPU builds of torch AND torchvision together from the PyTorch CPU
+# index (the model runs on the endpoint's GPU, not here). Pinning a matched pair is
+# required: aurora -> timm pulls torchvision transitively, and a mismatched build
+# fails at import with "operator torchvision::nms does not exist". Installing both
+# here first satisfies that transitive dependency with the correct CPU build.
 COPY requirements.txt ./
-RUN pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.2" \
+RUN pip install --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.5.1 torchvision==0.20.1 \
     && pip install -r requirements.txt
 
 COPY aurora_pipeline ./aurora_pipeline
