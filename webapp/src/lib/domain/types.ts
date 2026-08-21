@@ -84,6 +84,12 @@ export interface AssetRisk {
   forecastWindMph: number;
   rainfallIn: number;
   hoursToImpact: number | null;
+  /** First forecast hour storm-force (>=39 mph) winds reach the asset. */
+  tsWindEtaH: number | null;
+  /** First forecast hour hurricane-force (>=74 mph) winds reach the asset. */
+  hurWindEtaH: number | null;
+  /** Actionable lead time (hours) before storm-force winds make ops unsafe. */
+  evacWindowH: number | null;
   insideCone: boolean;
   factors: RiskFactor[];
   recommendations: string[];

@@ -113,7 +113,40 @@ export function AssetDetailPanel({
             label="Expected time of impact"
             value={risk.hoursToImpact === null ? "None in horizon" : `${risk.hoursToImpact} hours`}
           />
+          <Row
+            label="Storm-force winds (≥39 mph)"
+            value={
+              risk.tsWindEtaH === null
+                ? "Not within horizon"
+                : risk.tsWindEtaH === 0
+                  ? "Underway now"
+                  : `arrive in ${risk.tsWindEtaH} h`
+            }
+          />
+          {risk.hurWindEtaH !== null && (
+            <Row
+              label="Hurricane-force winds (≥74 mph)"
+              value={risk.hurWindEtaH === 0 ? "Underway now" : `arrive in ${risk.hurWindEtaH} h`}
+            />
+          )}
           <Row label="Forecast confidence" value={event ? event.confidence : "—"} />
+          {risk.evacWindowH !== null && (
+            <div
+              className="mt-2 rounded-sm border px-2.5 py-2"
+              style={{ borderColor: riskColorVar(risk.level) }}
+            >
+              <div className="label-xs">Evacuation / shut-in window</div>
+              <div className="num mt-0.5 text-sm font-semibold" style={{ color: riskColorVar(risk.level) }}>
+                {risk.evacWindowH === 0
+                  ? "Window closed — storm-force winds underway"
+                  : `${risk.evacWindowH} h before storm-force winds`}
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Actionable lead time to down-man, secure and shut in before conditions exceed safe
+                operating limits.
+              </p>
+            </div>
+          )}
         </Section>
       )}
 

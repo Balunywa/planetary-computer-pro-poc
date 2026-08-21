@@ -261,11 +261,22 @@ export default function GeoMap({
     }
     // A LineString needs >= 2 positions; fewer produces invalid GeoJSON that
     // stalls MapLibre's worker and blanks every vector layer. Emit empty instead.
-    const forecastCoords = event.forecast.map((p) => [p.lon, p.lat]);
-    const forecastFeatures: Feature[] =
-      forecastCoords.length >= 2
-        ? [feature({ type: "LineString", coordinates: forecastCoords }) as Feature]
-        : [];
+    // Split the centerline into per-segment features coloured by intensity so
+    // the track reads Cat-3 orange -> TS green as the storm evolves.
+    const fpts = event.forecast;
+    const forecastFeatures: Feature[] = [];
+    for (let i = 0; i < fpts.length - 1; i++) {
+      const a = fpts[i]!;
+      const b = fpts[i + 1]!;
+      forecastFeatures.push(
+        feature(
+          { type: "LineString", coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
+          {
+            color: categoryColor(Math.max(a.category, b.category), Math.max(a.windMph, b.windMph)),
+          },
+        ) as Feature,
+      );
+    }
     const historyCoords = (event.history ?? []).filter(
       (c) => Array.isArray(c) && c.length === 2,
     );
@@ -300,6 +311,18 @@ export default function GeoMap({
       points: { type: "FeatureCollection", features: points as Feature[] } as FeatureCollection,
     };
   }, [event]);
+
+  /** Cone swept only up to the animation playhead, so it grows as the eye moves. */
+  const activeCone: FeatureCollection = useMemo(() => {
+    if (!event || event.forecast.length < 2 || hour <= event.forecast[0]!.hour) return empty();
+    const pts = event.forecast
+      .filter((p) => p.hour <= hour)
+      .map((p) => ({ lon: p.lon, lat: p.lat, radiusMi: p.coneRadiusMi }));
+    const head = interpolatePosition(event, hour);
+    if (head) pts.push({ lon: head.lon, lat: head.lat, radiusMi: head.coneRadiusMi });
+    if (pts.length < 2) return empty();
+    return { type: "FeatureCollection", features: [feature(conePolygon(pts)) as Feature] };
+  }, [event, hour]);
 
   /** Ensemble spread: each member's centerline, conveying track uncertainty. */
   const ensembleData: FeatureCollection = useMemo(() => {
@@ -478,6 +501,7 @@ export default function GeoMap({
     src("ensemble", empty());
     src("prev-track", empty());
     src("cone", empty());
+    src("cone-active", empty());
     src("wind", empty());
     src("history", empty());
     src("forecast", empty());
@@ -559,9 +583,27 @@ export default function GeoMap({
       source: "cone",
       paint: {
         "line-color": token("--color-cone", "#93c5fd"),
-        "line-opacity": 0.6,
-        "line-width": 1.2,
+        "line-opacity": 0.4,
+        "line-width": 1.6,
+        "line-blur": 3,
         "line-dasharray": [4, 3],
+      },
+    });
+    add({
+      id: "cone-active-fill",
+      type: "fill",
+      source: "cone-active",
+      paint: { "fill-color": token("--color-cone", "#93c5fd"), "fill-opacity": 0.22 },
+    });
+    add({
+      id: "cone-active-line",
+      type: "line",
+      source: "cone-active",
+      paint: {
+        "line-color": token("--color-cone", "#93c5fd"),
+        "line-opacity": 0.7,
+        "line-width": 2,
+        "line-blur": 2.5,
       },
     });
     add({
@@ -575,8 +617,8 @@ export default function GeoMap({
       type: "line",
       source: "forecast",
       paint: {
-        "line-color": token("--color-track", "#e2e8f0"),
-        "line-width": 2.4,
+        "line-color": ["get", "color"],
+        "line-width": 3,
         "line-dasharray": [3, 2],
       },
     });
@@ -814,6 +856,7 @@ export default function GeoMap({
     set("pipelines", pipelineLines, !!layers["assets"]);
     set("catalog-items", catalogData, true);
     set("cone", trackData.cone, !!layers["track"]);
+    set("cone-active", activeCone, !!layers["track"]);
     set("forecast", trackData.forecast, !!layers["track"]);
     set("history", trackData.history, !!layers["track"] || !!layers["history"]);
     set("track-points", trackData.points, !!layers["track"]);
@@ -833,6 +876,7 @@ export default function GeoMap({
     pipelineLines,
     catalogData,
     trackData,
+    activeCone,
     ensembleData,
     previousData,
     windData,

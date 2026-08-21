@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Play, Pause } from "lucide-react";
 
 import { AppShell } from "@/components/ops/AppShell";
 import { OpsMap } from "@/components/ops/OpsMap";
@@ -32,6 +32,18 @@ export function MapPage() {
   const [level, setLevel] = useState<RiskLevel | "all">("all");
   const [unit, setUnit] = useState("all");
   const [operator, setOperator] = useState("all");
+  const [hour, setHour] = useState(0);
+  const [playing, setPlaying] = useState(true);
+
+  // Advance the forecast playhead so the eye, wind field and cone animate along
+  // the real Aurora track. Interpolation between 6-hour steps keeps it smooth.
+  useEffect(() => {
+    if (!playing || !event) return;
+    const id = setInterval(() => {
+      setHour((h) => (h >= 120 ? 0 : Math.min(120, h + 1.5)));
+    }, 90);
+    return () => clearInterval(id);
+  }, [playing, event]);
 
   useEffect(() => {
     if (!layerDefs.data) return;
@@ -205,6 +217,7 @@ export function MapPage() {
             layers={layers}
             catalogLayers={layerDefs.data ?? []}
             selectedId={selected}
+            hour={hour}
             onSelect={setSelected}
           />
           {!event && assets.length === 0 && (layerDefs.data?.length ?? 0) === 0 && (
@@ -218,6 +231,32 @@ export function MapPage() {
               >
                 Add data from the Operations Overview
               </OpsLink>
+            </div>
+          )}
+          {event && (
+            <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border bg-popover/90 px-3 py-2 shadow-lg backdrop-blur">
+              <button
+                onClick={() => setPlaying((p) => !p)}
+                className="inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs hover:bg-accent"
+                aria-label={playing ? "Pause forecast" : "Play forecast"}
+              >
+                {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                {playing ? "Pause" : "Play"}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={120}
+                step={1}
+                value={hour}
+                onChange={(e) => {
+                  setPlaying(false);
+                  setHour(Number(e.target.value));
+                }}
+                className="h-1 w-40 accent-[var(--color-primary)] sm:w-56"
+                aria-label="Forecast hour"
+              />
+              <span className="num w-14 text-right text-xs font-semibold">+{Math.round(hour)} h</span>
             </div>
           )}
         </div>

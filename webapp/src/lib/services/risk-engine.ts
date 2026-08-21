@@ -78,6 +78,38 @@ export function forecastRainfallAt(distanceMi: number, category: number): number
   return Math.max(0.2, Number((base * Math.exp(-distanceMi / 180)).toFixed(1)));
 }
 
+export interface WindArrival {
+  tsWindEtaH: number | null;
+  hurWindEtaH: number | null;
+  evacWindowH: number | null;
+}
+
+/** First forecast hour at which storm-force / hurricane-force winds reach an asset. */
+export function windArrival(asset: Asset, event: WeatherEvent, maxHour = 120): WindArrival {
+  const points = event.forecast.filter((p) => p.hour <= maxHour);
+  let tsEta: number | null = null;
+  let hurEta: number | null = null;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    for (let t = 0; t <= 12; t++) {
+      const f = t / 12;
+      const lat = a.lat + (b.lat - a.lat) * f;
+      const lon = a.lon + (b.lon - a.lon) * f;
+      const core = a.windMph + (b.windMph - a.windMph) * f;
+      const hour = a.hour + (b.hour - a.hour) * f;
+      const w = forecastWindAt(haversineMi(asset.lat, asset.lon, lat, lon), core);
+      if (tsEta === null && w >= 39) tsEta = hour;
+      if (hurEta === null && w >= 74) hurEta = hour;
+    }
+  }
+  return {
+    tsWindEtaH: tsEta === null ? null : Math.round(tsEta),
+    hurWindEtaH: hurEta === null ? null : Math.round(hurEta),
+    evacWindowH: tsEta === null ? null : Math.max(0, Math.round(tsEta)),
+  };
+}
+
 export function levelFromScore(score: number): RiskLevel {
   if (score >= 80) return "critical";
   if (score >= 62) return "high";
@@ -173,6 +205,8 @@ export function scoreAsset(asset: Asset, event: WeatherEvent, horizonHours = 120
   const raw = factors.reduce((sum, f) => sum + f.points, 0);
   const score = Math.max(0, Math.min(100, Math.round(raw)));
 
+  const arrival = windArrival(asset, event, horizonHours);
+
   return {
     assetId: asset.id,
     score,
@@ -182,6 +216,9 @@ export function scoreAsset(asset: Asset, event: WeatherEvent, horizonHours = 120
     forecastWindMph: wind,
     rainfallIn: rain,
     hoursToImpact: eta === null ? null : Math.round(eta),
+    tsWindEtaH: arrival.tsWindEtaH,
+    hurWindEtaH: arrival.hurWindEtaH,
+    evacWindowH: arrival.evacWindowH,
     insideCone: prox.insideCone,
     factors: factors.filter((f) => f.points > 0),
     recommendations: recommend(asset, wind, eta, prox.insideCone, rain),
