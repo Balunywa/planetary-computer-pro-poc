@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "6756084640541049211"
+      "templateHash": "1117880511806742876"
     }
   },
   "parameters": {
@@ -151,14 +151,21 @@
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Deploy a scheduled Azure Container Apps Job that runs the Aurora forecast pipeline on the ECMWF cycle cadence (00/06/12/18 UTC), publishing weather-events.json to the model-outputs container so the map stays live without manual runs. Requires the Aurora weather model (for the GPU endpoint) and sample storage, plus a prebuilt pipeline image."
+        "description": "Deploy a scheduled Azure Container Apps Job that runs the Aurora forecast pipeline on the ECMWF cycle cadence (00/06/12/18 UTC), publishing weather-events.json to the model-outputs container so the map stays live without manual runs. The template also provisions a dedicated Azure Container Registry for the pipeline image. Requires the Aurora weather model (for the GPU endpoint) and sample storage."
       }
     },
     "auroraJobImage": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Container image for the Aurora forecast pipeline job, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Build and push it first with `az acr build -r <registry> -t aurora-pipeline:latest aurora`. The scheduled job deploys only when this is supplied (an empty value provisions nothing)."
+        "description": "Optional override for the Aurora pipeline container image, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Leave blank to use the Azure Container Registry this template provisions (build into it once with `az acr build`)."
+      }
+    },
+    "auroraJobImageTag": {
+      "type": "string",
+      "defaultValue": "latest",
+      "metadata": {
+        "description": "Image tag for the Aurora pipeline image in the auto-provisioned registry. Ignored when auroraJobImage is set."
       }
     },
     "auroraJobCron": {
@@ -199,10 +206,13 @@
     "logAnalyticsName": "[format('{0}-logs-{1}', variables('namePrefix'), variables('amlSuffix'))]",
     "auroraJobName": "[format('{0}-aurora-job-{1}', variables('namePrefix'), variables('amlSuffix'))]",
     "auroraJobIdentityName": "[format('{0}-aurora-job-identity', variables('namePrefix'))]",
+    "auroraAcrName": "[toLower(format('pcproacr{0}', variables('amlSuffix')))]",
+    "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
     "auroraChannelContainerName": "aurora-channel",
-    "deployAuroraJob": "[and(and(and(parameters('deployAuroraSchedule'), not(empty(parameters('auroraJobImage')))), parameters('deployAuroraModel')), parameters('deploySampleStorage'))]",
-    "auroraJobUsesAcr": "[and(variables('deployAuroraJob'), contains(parameters('auroraJobImage'), '.azurecr.io'))]",
-    "auroraJobRegistryServer": "[if(variables('auroraJobUsesAcr'), split(parameters('auroraJobImage'), '/')[0], '')]"
+    "deployAuroraJob": "[and(and(parameters('deployAuroraSchedule'), parameters('deployAuroraModel')), parameters('deploySampleStorage'))]",
+    "auroraJobImageRef": "[if(not(empty(parameters('auroraJobImage'))), parameters('auroraJobImage'), format('{0}.azurecr.io/aurora-pipeline:{1}', variables('auroraAcrName'), parameters('auroraJobImageTag')))]",
+    "auroraJobUsesAcr": "[and(variables('deployAuroraJob'), or(empty(parameters('auroraJobImage')), contains(parameters('auroraJobImage'), '.azurecr.io')))]",
+    "auroraJobRegistryServer": "[if(empty(parameters('auroraJobImage')), format('{0}.azurecr.io', variables('auroraAcrName')), if(contains(parameters('auroraJobImage'), '.azurecr.io'), split(parameters('auroraJobImage'), '/')[0], ''))]"
   },
   "imports": {
     "microsoftGraphV1": {
@@ -561,6 +571,35 @@
       "name": "[variables('auroraJobIdentityName')]",
       "location": "[parameters('location')]"
     },
+    "auroraAcr": {
+      "condition": "[and(variables('deployAuroraJob'), empty(parameters('auroraJobImage')))]",
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-11-01-preview",
+      "name": "[variables('auroraAcrName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Basic"
+      },
+      "properties": {
+        "adminUserEnabled": false
+      }
+    },
+    "auroraJobAcrPull": {
+      "condition": "[and(variables('deployAuroraJob'), empty(parameters('auroraJobImage')))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', variables('auroraAcrName'))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', variables('auroraAcrName')), variables('auroraJobIdentityName'), variables('acrPullRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
+        "principalId": "[if(variables('deployAuroraJob'), reference('auroraJobIdentity').principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "auroraAcr",
+        "auroraJobIdentity"
+      ]
+    },
     "auroraJobBlobRole": {
       "condition": "[variables('deployAuroraJob')]",
       "type": "Microsoft.Authorization/roleAssignments",
@@ -622,7 +661,7 @@
           "containers": [
             {
               "name": "aurora-pipeline",
-              "image": "[parameters('auroraJobImage')]",
+              "image": "[variables('auroraJobImageRef')]",
               "resources": {
                 "cpu": "[json('4.0')]",
                 "memory": "8Gi"
@@ -876,7 +915,7 @@
     "auroraScheduleDeployed": {
       "type": "bool",
       "metadata": {
-        "description": "Whether the scheduled Aurora forecast job (Container Apps Job) was deployed. Requires the Aurora model + sample storage components and a supplied pipeline image."
+        "description": "Whether the scheduled Aurora forecast job (Container Apps Job) was deployed. Requires the Aurora model + sample storage components."
       },
       "value": "[variables('deployAuroraJob')]"
     },
@@ -894,9 +933,23 @@
     "auroraJobIdentityPrincipalId": {
       "type": "string",
       "metadata": {
-        "description": "Principal (object) ID of the Aurora job managed identity. Grant it AcrPull on your container registry so the job can pull its image."
+        "description": "Principal (object) ID of the Aurora job managed identity. AcrPull on the auto-provisioned registry is granted for you; grant it on any external registry you point auroraJobImage at."
       },
       "value": "[if(variables('deployAuroraJob'), reference('auroraJobIdentity').principalId, 'not-deployed')]"
+    },
+    "auroraAcrName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the auto-provisioned Azure Container Registry for the pipeline image (empty when a custom auroraJobImage is supplied)."
+      },
+      "value": "[if(and(variables('deployAuroraJob'), empty(parameters('auroraJobImage'))), variables('auroraAcrName'), 'not-deployed')]"
+    },
+    "auroraImageBuildCommand": {
+      "type": "string",
+      "metadata": {
+        "description": "One-time command to build the pipeline image into the registry so the scheduled job can run."
+      },
+      "value": "[if(and(variables('deployAuroraJob'), empty(parameters('auroraJobImage'))), format('az acr build -r {0} -t aurora-pipeline:{1} aurora', variables('auroraAcrName'), parameters('auroraJobImageTag')), 'not-applicable')]"
     },
     "ingestIdentityClientId": {
       "type": "string",

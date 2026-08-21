@@ -81,11 +81,14 @@ param auroraInstanceType string = 'Standard_NC24ads_A100_v4'
 @description('Registry model asset ID for the Aurora managed-compute deployment. The official Microsoft storm-impact app uses azureml://registries/azureml/models/Aurora/versions/4. Leave blank to provision the Foundry workspace + endpoint only and deploy the model from the portal (the GPU deployment needs quota + accepted terms).')
 param auroraModelAssetId string = ''
 
-@description('Deploy a scheduled Azure Container Apps Job that runs the Aurora forecast pipeline on the ECMWF cycle cadence (00/06/12/18 UTC), publishing weather-events.json to the model-outputs container so the map stays live without manual runs. Requires the Aurora weather model (for the GPU endpoint) and sample storage, plus a prebuilt pipeline image.')
+@description('Deploy a scheduled Azure Container Apps Job that runs the Aurora forecast pipeline on the ECMWF cycle cadence (00/06/12/18 UTC), publishing weather-events.json to the model-outputs container so the map stays live without manual runs. The template also provisions a dedicated Azure Container Registry for the pipeline image. Requires the Aurora weather model (for the GPU endpoint) and sample storage.')
 param deployAuroraSchedule bool = false
 
-@description('Container image for the Aurora forecast pipeline job, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Build and push it first with `az acr build -r <registry> -t aurora-pipeline:latest aurora`. The scheduled job deploys only when this is supplied (an empty value provisions nothing).')
+@description('Optional override for the Aurora pipeline container image, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Leave blank to use the Azure Container Registry this template provisions (build into it once with `az acr build`).')
 param auroraJobImage string = ''
+
+@description('Image tag for the Aurora pipeline image in the auto-provisioned registry. Ignored when auroraJobImage is set.')
+param auroraJobImageTag string = 'latest'
 
 @description('Cron schedule (UTC) for the Aurora forecast job. The default runs ~1 h after each synoptic cycle (00/06/12/18 UTC) to allow for input-data latency.')
 param auroraJobCron string = '0 1,7,13,19 * * *'
@@ -151,17 +154,25 @@ var deployAuroraDeployment = deployAuroraModel && !empty(auroraModelAssetId)
 
 // Scheduled Aurora forecast job (Azure Container Apps Job). It needs the GPU endpoint
 // to call and the sample storage account for its scratch channel + published output, so
-// it deploys only when those are present and a pipeline image is supplied.
+// it deploys only when those are present. The template also provisions a dedicated
+// Azure Container Registry for the pipeline image (each deployment is self-contained —
+// no shared/external registry), and grants the job's identity AcrPull on it.
 var containerAppsEnvName = '${namePrefix}-cae-${amlSuffix}'
 var logAnalyticsName = '${namePrefix}-logs-${amlSuffix}'
 var auroraJobName = '${namePrefix}-aurora-job-${amlSuffix}'
 var auroraJobIdentityName = '${namePrefix}-aurora-job-identity'
+var auroraAcrName = toLower('pcproacr${amlSuffix}')
+var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 // Scratch container the Aurora endpoint streams tensors through (the blob "channel").
 var auroraChannelContainerName = 'aurora-channel'
-var deployAuroraJob = deployAuroraSchedule && !empty(auroraJobImage) && deployAuroraModel && deploySampleStorage
-// Configure image pull with the job's managed identity when the image lives in an ACR.
-var auroraJobUsesAcr = deployAuroraJob && contains(auroraJobImage, '.azurecr.io')
-var auroraJobRegistryServer = auroraJobUsesAcr ? split(auroraJobImage, '/')[0] : ''
+var deployAuroraJob = deployAuroraSchedule && deployAuroraModel && deploySampleStorage
+// By default the job pulls from the ACR this template provisions; an explicit
+// auroraJobImage overrides it (bring-your-own registry / prebuilt image).
+var auroraJobImageRef = !empty(auroraJobImage) ? auroraJobImage : '${auroraAcrName}.azurecr.io/aurora-pipeline:${auroraJobImageTag}'
+// Configure image pull with the job's managed identity when the image lives in an ACR
+// (the auto-provisioned one, or an external *.azurecr.io the caller supplied).
+var auroraJobUsesAcr = deployAuroraJob && (empty(auroraJobImage) || contains(auroraJobImage, '.azurecr.io'))
+var auroraJobRegistryServer = empty(auroraJobImage) ? '${auroraAcrName}.azurecr.io' : (contains(auroraJobImage, '.azurecr.io') ? split(auroraJobImage, '/')[0] : '')
 
 // ------------------------------------------------------------------------------------
 // Core resource: the Planetary Computer Pro GeoCatalog
@@ -465,6 +476,30 @@ resource auroraJobIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@202
   location: location
 }
 
+// Dedicated registry for the pipeline image so each deployment is self-contained (no
+// shared/external ACR). Build the image into it once with `az acr build`.
+resource auroraAcr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = if (deployAuroraJob && empty(auroraJobImage)) {
+  name: auroraAcrName
+  location: location
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    adminUserEnabled: false
+  }
+}
+
+// Let the job pull its image from the auto-provisioned registry with its managed identity.
+resource auroraJobAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAuroraJob && empty(auroraJobImage)) {
+  name: guid(auroraAcr.id, auroraJobIdentityName, acrPullRoleId)
+  scope: auroraAcr
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+    principalId: deployAuroraJob ? auroraJobIdentity.properties.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // The job writes its scratch channel SAS and the published weather-events.json to the
 // sample storage account, so it needs Storage Blob Data Contributor there.
 resource auroraJobBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAuroraJob) {
@@ -520,7 +555,7 @@ resource auroraJob 'Microsoft.App/jobs@2024-03-01' = if (deployAuroraJob) {
       containers: [
         {
           name: 'aurora-pipeline'
-          image: auroraJobImage
+          image: auroraJobImageRef
           resources: {
             cpu: json('4.0')
             memory: '8Gi'
@@ -724,13 +759,17 @@ output aiAgentDeployment string = deployAiAgent ? openAiDeploymentName : 'not-de
 output auroraWorkspace string = deployAuroraModel ? amlWorkspaceName : 'not-deployed'
 output auroraEndpoint string = deployAuroraModel ? auroraEndpointName : 'not-deployed'
 output auroraModelDeployed bool = deployAuroraDeployment
-@description('Whether the scheduled Aurora forecast job (Container Apps Job) was deployed. Requires the Aurora model + sample storage components and a supplied pipeline image.')
+@description('Whether the scheduled Aurora forecast job (Container Apps Job) was deployed. Requires the Aurora model + sample storage components.')
 output auroraScheduleDeployed bool = deployAuroraJob
 output auroraJobName string = deployAuroraJob ? auroraJobName : 'not-deployed'
 @description('Cron schedule (UTC) the Aurora forecast job runs on.')
 output auroraJobSchedule string = deployAuroraJob ? auroraJobCron : 'not-deployed'
-@description('Principal (object) ID of the Aurora job managed identity. Grant it AcrPull on your container registry so the job can pull its image.')
+@description('Principal (object) ID of the Aurora job managed identity. AcrPull on the auto-provisioned registry is granted for you; grant it on any external registry you point auroraJobImage at.')
 output auroraJobIdentityPrincipalId string = deployAuroraJob ? auroraJobIdentity.properties.principalId : 'not-deployed'
+@description('Name of the auto-provisioned Azure Container Registry for the pipeline image (empty when a custom auroraJobImage is supplied).')
+output auroraAcrName string = (deployAuroraJob && empty(auroraJobImage)) ? auroraAcrName : 'not-deployed'
+@description('One-time command to build the pipeline image into the registry so the scheduled job can run.')
+output auroraImageBuildCommand string = (deployAuroraJob && empty(auroraJobImage)) ? 'az acr build -r ${auroraAcrName} -t aurora-pipeline:${auroraJobImageTag} aurora' : 'not-applicable'
 output ingestIdentityClientId string = deploySampleStorage ? ingestIdentity.properties.clientId : 'not-deployed'
 output ingestIdentityObjectId string = deploySampleStorage ? ingestIdentity.properties.principalId : 'not-deployed'
 output webAppName string = deployWebApp ? webAppName : 'not-deployed'

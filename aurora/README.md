@@ -104,24 +104,40 @@ This builds initial conditions, detects storms, runs the endpoint with
 
 ## Schedule it (no manual runs)
 
-Build the container and run it as an Azure Container Apps **Job** on the ECMWF
-cycle cadence (00/06/12/18 UTC). A ready-to-deploy module is in
-`deploy/azure/aurora-job.bicep`:
+The scheduled trigger is **part of the main deployment**. Select **“Aurora
+scheduled forecast job (Container Apps)”** in the portal wizard (or set
+`deployAuroraSchedule=true`) and supply a prebuilt pipeline image. The template
+then provisions an Azure Container Apps **Job** with a cron trigger, a managed
+identity, and its role assignments — no separate module.
+
+Build and push the image first (uses the `Dockerfile` in this folder), then
+deploy with the image reference:
 
 ```bash
-# Build & push the image (uses the Dockerfile in this folder).
+# Build & push the image to your registry.
 az acr build -r <your-registry> -t aurora-pipeline:latest aurora
 
-# Deploy the scheduled job (managed identity, cron trigger).
+# Deploy (or redeploy) the environment with the scheduled job enabled.
 az deployment group create -g pcpro-poc-rg \
-  -f deploy/azure/aurora-job.bicep \
-  -p image=<your-registry>.azurecr.io/aurora-pipeline:latest \
-     auroraEndpoint=$AURORA_ENDPOINT
+  -f deploy/azure/main.bicep \
+  -p deployAuroraModel=true deployAuroraSchedule=true \
+     auroraJobImage=<your-registry>.azurecr.io/aurora-pipeline:latest
 ```
 
-Grant the job's managed identity **Storage Blob Data Contributor** on the storage
-account (for both the scratch channel and `model-outputs`) and **AzureML Data
-Scientist** on the workspace, exactly like the web app's identity.
+The job runs `python -m aurora_pipeline.run` on the ECMWF cycle cadence
+(default cron `0 1,7,13,19 * * *`, ~1 h after each 00/06/12/18 UTC synoptic cycle
+for data latency). It reads **real-time public NOAA GFS** initial conditions with
+no `ANALYSIS_TIME` set, so each run targets the latest available cycle — genuinely
+live forecasts.
+
+The template grants the job’s managed identity **Storage Blob Data Contributor**
+on the sample storage account (for the scratch channel and `model-outputs`) and
+**AzureML Data Scientist** on the workspace automatically. The job authenticates
+to the endpoint and storage with that identity — **no keys or `AURORA_ENDPOINT_TOKEN`**
+(when the token is unset the pipeline mints an AAD token from the managed
+identity). The one manual step is granting the identity **AcrPull** on your
+registry so it can pull the image; its principal ID is in the deployment outputs
+(`auroraJobIdentityPrincipalId`).
 
 ## Layout
 

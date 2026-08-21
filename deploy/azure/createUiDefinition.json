@@ -261,7 +261,7 @@
                 "visible": true,
                 "options": {
                   "icon": "Info",
-                  "text": "Runs the Aurora pipeline as a scheduled Container Apps Job so the map stays live without manual runs. It needs the Aurora weather model (the GPU endpoint) and sample storage selected too. Build and push the image first: az acr build -r <registry> -t aurora-pipeline:latest aurora — then paste the image reference below. After deploying, grant the job's managed identity AcrPull on your registry (its principal ID is in the deployment outputs)."
+                  "text": "Runs the Aurora pipeline as a scheduled Container Apps Job so the map stays live without manual runs. The template provisions a dedicated Azure Container Registry and grants the job pull access automatically — you don't manage a registry. It needs the Aurora weather model (the GPU endpoint) and sample storage selected too. After deploying, build the image into the registry once (the exact command is in the deployment outputs, auroraImageBuildCommand): az acr build -r <registry> -t aurora-pipeline:latest aurora."
                 }
               },
               {
@@ -276,13 +276,13 @@
               {
                 "name": "auroraJobImage",
                 "type": "Microsoft.Common.TextBox",
-                "label": "Pipeline container image",
+                "label": "Custom pipeline image (optional override)",
                 "defaultValue": "",
-                "toolTip": "Container image for the Aurora pipeline job, e.g. myregistry.azurecr.io/aurora-pipeline:latest. Build it from the aurora/ folder. Leave blank to skip deploying the job.",
+                "toolTip": "Leave blank to use the Azure Container Registry this template provisions. Set this only to bring your own prebuilt image, e.g. myregistry.azurecr.io/aurora-pipeline:latest.",
                 "constraints": {
                   "required": false,
                   "regex": "^$|^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?(:[a-zA-Z0-9._-]+)?$",
-                  "validationMessage": "Enter an image reference like myregistry.azurecr.io/aurora-pipeline:latest, or leave blank."
+                  "validationMessage": "Enter an image reference like myregistry.azurecr.io/aurora-pipeline:latest, or leave blank to use the provisioned registry."
                 }
               },
               {
